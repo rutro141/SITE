@@ -1,5 +1,5 @@
 // ===== ЗАДАНИЯ (босс задаёт title, desc, from, to, priority, rating) =====
-// done — галочка работника, canceled — нажал "Не могу". Не редактировать руками.
+// done — галочка работника, canceled — нажал "Не могу" (эти статусы живут в state.json на Диске)
 const TASKS = [
   {
     id: 1,
@@ -25,13 +25,10 @@ const TASKS = [
   }
 ];
 
-// ===== ДНИ ЗАНЯТОСТИ =====
-const BUSY_DAYS = [];
-
 // ===== ПРАЗДНИКИ (задаёт босс) =====
 const HOLIDAYS = [
-  { name: "Новый год", date: "2027-01-01" },
-  { name: "День компании", date: "2026-3-7" }
+  { name: "День компании", date: "2026-12-15" },
+  { name: "Новый год", date: "2027-01-01" }
 ];
 
 // ===== ССЫЛКИ (четвёртый документ) =====
@@ -43,5 +40,5 @@ const LINKS = [
 
 // ===== ВСТАВЬТЕ СВОИ АДРЕСА СЮДА =====
 const LENTA_URL = "https://site.ru/lenta";   // ← ссылка на сайт "Лента"
-const REVIEWS_EMAIL = "susliki.help.and.support@yandex.ru";    // ← яндекс-почта для отзывов
+const REVIEWS_EMAIL = "pochta@yandex.ru";    // ← яндекс-почта для отзывов
 const SECOND_SITE_URL = "https://site.ru";   // ← вторая ссылка на сайт
