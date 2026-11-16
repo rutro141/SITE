@@ -8,13 +8,11 @@
   * { margin:0; padding:0; box-sizing:border-box; font-family:Arial, sans-serif; }
   body { background:#f0f2f5; min-height:100vh; }
 
-  /* Шапка */
   .header { background:#1a73e8; color:#fff; padding:12px 20px; display:flex; align-items:center; gap:12px; }
   .header .account { margin-left:auto; background:rgba(255,255,255,.2); padding:8px 14px; border-radius:20px; cursor:pointer; }
   .btn-top { background:rgba(255,255,255,.2); color:#fff; border:none; padding:8px 16px; border-radius:20px; cursor:pointer; font-size:14px; text-decoration:none; }
   .btn-top:hover { background:rgba(255,255,255,.35); }
 
-  /* Вкладки */
   .tabs { display:flex; background:#fff; border-bottom:2px solid #ddd; }
   .tab { flex:1; padding:14px; text-align:center; cursor:pointer; color:#555; font-weight:bold; }
   .tab.active { color:#1a73e8; border-bottom:3px solid #1a73e8; }
@@ -22,7 +20,6 @@
   .page { display:none; padding:16px; max-width:700px; margin:0 auto; }
   .page.active { display:block; }
 
-  /* Окошко заданий */
   .task-window { background:#fff; border-radius:10px; box-shadow:0 2px 6px rgba(0,0,0,.15); }
   .task-row { padding:14px 16px; border-bottom:1px solid #eee; cursor:pointer; display:flex; justify-content:space-between; align-items:center; }
   .task-row:hover { background:#f5f8ff; }
@@ -44,7 +41,6 @@
   .busy-box { background:#fff; border-radius:10px; padding:16px; margin-top:12px; box-shadow:0 2px 6px rgba(0,0,0,.15); display:none; }
   .busy-item { display:flex; justify-content:space-between; padding:6px 0; }
 
-  /* Чат */
   .chat-box { background:#fff; border-radius:10px; box-shadow:0 2px 6px rgba(0,0,0,.15); display:flex; flex-direction:column; height:60vh; }
   .chat-msgs { flex:1; overflow-y:auto; padding:14px; }
   .msg { max-width:70%; padding:8px 12px; border-radius:14px; margin-bottom:8px; font-size:14px; }
@@ -93,7 +89,7 @@
   </div>
 
   <button class="btn btn-blue" style="margin-top:16px;" onclick="toggleBusy()">Дни занятости</button>
-  <button class="btn btn-green" id="save-btn" onclick="saveToDataJs()">Сохранить в data.js</button>
+  <button class="btn btn-gray" onclick="refreshState()">Обновить</button>
   <div class="save-hint" id="save-hint"></div>
 
   <div class="busy-box" id="busy-box">
@@ -139,6 +135,74 @@
 
 <script src="data.js"></script>
 <script>
+// ===== НАСТРОЙКИ ЯНДЕКС ДИСКА — ЗАПОЛНИТЕ =====
+const DISK_TOKEN = "сюда-вставьте-токен";
+const DISK_PATH  = "disk:/sitedata/state.json";
+const DISK_API   = "https://cloud-api.yandex.net/v1/disk/resources";
+
+// ---------- ДАННЫЕ ----------
+let tasks = TASKS.map(t => ({...t}));
+let busyDays = [];
+let chat = [];
+let currentId = null;
+
+function applyState(st){
+  if (st.tasks) tasks.forEach(t => {
+    if (st.tasks[t.id]) { t.done = st.tasks[t.id].done; t.canceled = st.tasks[t.id].canceled; }
+  });
+  if (st.busyDays) busyDays = st.busyDays;
+  if (st.chat) chat = st.chat;
+}
+
+// ---------- ЧТЕНИЕ И ЗАПИСЬ НА ЯНДЕКС ДИСК ----------
+async function loadState(){
+  try {
+    const r = await fetch(DISK_API + "/download?path=" + encodeURIComponent(DISK_PATH), {
+      headers: { Authorization: "OAuth " + DISK_TOKEN }
+    });
+    if (r.status === 404) return null; // файла ещё нет — создастся при первом сохранении
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const j = await r.json();          // Диск выдаёт временную ссылку на скачивание
+    const f = await fetch(j.href);
+    return await f.json();
+  } catch(e){ console.error(e); return null; }
+}
+
+let saveTimer = null;
+function markDirty(){
+  clearTimeout(saveTimer);
+  document.getElementById('save-hint').textContent = 'Сохранение...';
+  saveTimer = setTimeout(saveState, 1500);
+}
+
+async function saveState(){
+  try {
+    const state = {
+      tasks: Object.fromEntries(tasks.map(t => [t.id, { done: !!t.done, canceled: !!t.canceled }])),
+      busyDays: busyDays,
+      chat: chat
+    };
+    // 1. Просим у Диска ссылку для загрузки (с перезаписью поверх старой версии)
+    const r = await fetch(DISK_API + "/upload?overwrite=true&path=" + encodeURIComponent(DISK_PATH), {
+      headers: { Authorization: "OAuth " + DISK_TOKEN }
+    });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const { href } = await r.json();
+    // 2. Кладём файл по этой ссылке — токен тут уже не нужен
+    const up = await fetch(href, { method: "PUT", body: JSON.stringify(state, null, 2) });
+    document.getElementById('save-hint').textContent =
+      up.ok ? 'Сохранено ✔' : 'Ошибка загрузки — попробуйте ещё раз';
+  } catch(e){
+    console.error(e);
+    document.getElementById('save-hint').textContent = 'Ошибка соединения с Диском';
+  }
+}
+
+async function refreshState(){
+  const s = await loadState();
+  if (s) { applyState(s); renderList(); renderChat(); renderBusy(); }
+}
+
 // ---------- ВКЛАДКИ ----------
 document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
   document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
@@ -148,11 +212,6 @@ document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
 });
 
 // ---------- ЗАДАНИЯ ----------
-// Источник истины — файл data.js. Всё меняется в нём, а не в памяти браузера.
-// tasks копируем из TASKS и работаем дальше с tasks
-let tasks = TASKS.map(t => ({...t}));
-let currentId = null;
-
 function renderList(){
   const box = document.getElementById('task-list');
   box.innerHTML = '';
@@ -197,9 +256,6 @@ function cancelTask(){
 }
 
 // ---------- ДНИ ЗАНЯТОСТИ ----------
-// Тоже живут в data.js (BUSY_DAYS)
-let busyDays = (typeof BUSY_DAYS !== 'undefined') ? [...BUSY_DAYS] : [];
-
 function toggleBusy(){
   const b = document.getElementById('busy-box');
   b.style.display = b.style.display === 'none' ? 'block' : 'none';
@@ -217,62 +273,7 @@ function renderBusy(){
     busyDays.map(d => `<div class="busy-item"><span>${d}</span><span class="status-not" style="cursor:pointer" onclick="removeBusy('${d}')">✕</span></div>`).join('') || '<div class="busy-item" style="color:#999">Пока ничего не указано</div>';
 }
 
-// ---------- СОХРАНЕНИЕ В ФАЙЛ data.js ----------
-let dirty = false;
-function markDirty(){
-  dirty = true;
-  const btn = document.getElementById('save-btn');
-  btn.textContent = 'Сохранить в data.js •';
-  document.getElementById('save-hint').textContent = 'Есть несохранённые изменения';
-}
-
-async function saveToDataJs(){
-  // Собираем новое содержимое файла data.js со всеми изменениями
-  const content =
-    '// ===== ЗАДАНИЯ (босс задаёт title, desc, from, to, priority, rating) =====\n' +
-    '// done — галочка работника, canceled — нажал "Не могу". Не редактировать руками.\n' +
-    'const TASKS = ' + JSON.stringify(tasks, null, 2) + ';\n\n' +
-    '// ===== ДНИ ЗАНЯТОСТИ =====\n' +
-    'const BUSY_DAYS = ' + JSON.stringify(busyDays, null, 2) + ';\n\n' +
-    '// ===== ПРАЗДНИКИ (задаёт босс) =====\n' +
-    'const HOLIDAYS = ' + JSON.stringify(HOLIDAYS, null, 2) + ';\n\n' +
-    '// ===== ССЫЛКИ (четвёртый документ) =====\n' +
-    'const LINKS = ' + JSON.stringify(LINKS, null, 2) + ';\n\n' +
-    '// ===== ВСТАВЬТЕ СВОИ АДРЕСА СЮДА =====\n' +
-    'const LENTA_URL = ' + JSON.stringify(LENTA_URL) + ';\n' +
-    'const REVIEWS_EMAIL = ' + JSON.stringify(REVIEWS_EMAIL) + ';\n' +
-    'const SECOND_SITE_URL = ' + JSON.stringify(SECOND_SITE_URL) + ';\n';
-
-  // Современные браузеры умеют перезаписывать реальный файл на диске
-  if (window.showSaveFilePicker) {
-    try {
-      const handle = await window.showSaveFilePicker({
-        suggestedName: 'data.js',
-        types: [{ description: 'JS файл', accept: { 'text/javascript': ['.js'] } }]
-      });
-      const w = await handle.createWritable();
-      await w.write(content);
-      await w.close();
-      dirty = false;
-      document.getElementById('save-btn').textContent = 'Сохранить в data.js';
-      document.getElementById('save-hint').textContent = 'Сохранено в data.js ✔';
-      return;
-    } catch (e) {
-      if (e.name === 'AbortError') return; // пользователь отменил — ничего не делаем
-    }
-  }
-
-  // Запасной вариант: скачивается файл data.js, его нужно положить на место старого
-  const blob = new Blob([content], {type: 'text/javascript;charset=utf-8'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'data.js';
-  a.click();
-  document.getElementById('save-hint').textContent = 'Скачан data.js — замените им старый файл в папке сайта';
-}
-
 // ---------- ЧАТ ----------
-let chat = JSON.parse(localStorage.getItem('chat_v1') || '[]');
 function renderChat(){
   const box = document.getElementById('chat-msgs');
   box.innerHTML = chat.map(m => `<div class="msg ${m.me ? 'me' : 'other'}">${m.text}</div>`).join('');
@@ -283,8 +284,8 @@ function sendMsg(){
   if (!inp.value.trim()) return;
   chat.push({ me:true, text: inp.value });
   inp.value = '';
-  localStorage.setItem('chat_v1', JSON.stringify(chat));
   renderChat();
+  markDirty();
 }
 
 // ---------- ССЫЛКИ ----------
@@ -315,8 +316,23 @@ function tick(){
 
 document.getElementById('account').textContent = localStorage.getItem('user_name') || 'Имя Фамилия';
 
-renderList(); renderChat(); renderLinks(); renderBusy(); tick();
-setInterval(tick, 1000);
+// ---------- ЗАПУСК ----------
+(async function(){
+  const st = await loadState();
+  if (st) applyState(st);
+  renderList(); renderChat(); renderLinks(); renderBusy(); tick();
+  setInterval(tick, 1000);
+  // каждые 8 секунд подтягиваем новые сообщения и статусы
+  setInterval(async () => {
+    const s = await loadState();
+    if (s) {
+      const before = JSON.stringify(chat);
+      applyState(s);
+      if (JSON.stringify(chat) !== before) renderChat();
+      renderList();
+    }
+  }, 8000);
+})();
 </script>
 </body>
 </html>
