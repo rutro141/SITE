@@ -8,6 +8,17 @@
   * { margin:0; padding:0; box-sizing:border-box; font-family:Arial, sans-serif; }
   body { background:#f0f2f5; min-height:100vh; }
 
+  /* Экран входа */
+  .login-screen { position:fixed; inset:0; background:#1a73e8; display:flex;
+    align-items:center; justify-content:center; z-index:100; }
+  .login-card { background:#fff; padding:30px; border-radius:12px; width:320px;
+    box-shadow:0 4px 20px rgba(0,0,0,.3); }
+  .login-card h2 { margin-bottom:16px; text-align:center; }
+  .login-card input { width:100%; padding:10px; margin-bottom:10px; border:1px solid #ccc;
+    border-radius:8px; font-size:14px; }
+  .login-card .btn { width:100%; }
+  .login-err { color:#c62828; font-size:13px; margin-bottom:8px; min-height:16px; }
+
   .header { background:#1a73e8; color:#fff; padding:12px 20px; display:flex; align-items:center; gap:12px; }
   .header .account { margin-left:auto; background:rgba(255,255,255,.2); padding:8px 14px; border-radius:20px; cursor:pointer; }
   .btn-top { background:rgba(255,255,255,.2); color:#fff; border:none; padding:8px 16px; border-radius:20px; cursor:pointer; font-size:14px; text-decoration:none; }
@@ -57,150 +68,216 @@
   .holiday b { font-size:20px; color:#e65100; }
   .countdown { margin-top:6px; font-size:15px; color:#555; }
   .save-hint { font-size:13px; color:#888; margin-top:6px; }
+
+  /* Панель босса */
+  .boss-form { background:#fff; border-radius:10px; padding:16px; box-shadow:0 2px 6px rgba(0,0,0,.15); margin-bottom:16px; }
+  .boss-form h3 { margin-bottom:10px; }
+  .boss-form input, .boss-form select, .boss-form textarea {
+    width:100%; padding:9px; margin-bottom:8px; border:1px solid #ccc; border-radius:8px; font-size:14px; }
+  .boss-list-item { background:#fff; border-radius:10px; padding:12px 16px; margin-bottom:8px;
+    box-shadow:0 2px 6px rgba(0,0,0,.15); display:flex; justify-content:space-between; align-items:center; cursor:pointer; }
+  .boss-list-item:hover { background:#f5f8ff; }
+  .staff-card { background:#fff; border-radius:10px; padding:14px 16px; margin-bottom:10px; box-shadow:0 2px 6px rgba(0,0,0,.15); }
+  .staff-card h4 { margin-bottom:6px; }
+
+  /* Выполненная работа внизу */
+  .done-box { margin-top:16px; background:#e8f5e9; border-radius:10px; padding:16px;
+    box-shadow:0 2px 6px rgba(0,0,0,.15); }
+  .done-box h3 { margin-bottom:8px; color:#2e7d32; }
+  .done-item { padding:5px 0; border-bottom:1px solid #c8e6c9; font-size:14px; }
 </style>
 </head>
 <body>
 
-<div class="header">
-  <a href="1.html"><button class="btn-top">Темперамент</button></a>
-  <div class="account" id="account">Имя Фамилия</div>
-</div>
-
-<div class="tabs">
-  <div class="tab active" data-page="page-tasks">Задания</div>
-  <div class="tab" data-page="page-chats">Чаты</div>
-  <div class="tab" data-page="page-links">Ссылки</div>
-</div>
-
-<!-- ===== ВКЛАДКА 1: ЗАДАНИЯ ===== -->
-<div class="page active" id="page-tasks">
-  <div class="task-window">
-    <div id="task-list"></div>
-    <div class="task-detail" id="task-detail" style="display:none;">
-      <h3 id="d-title"></h3>
-      <p id="d-desc"></p>
-      <div class="meta">С: <span id="d-from"></span></div>
-      <div class="meta">До: <span id="d-to"></span> &nbsp;|&nbsp; Важность: <b id="d-priority"></b></div>
-      <div class="meta">Рейтинг работы: <b id="d-rating"></b></div>
-      <label><input type="checkbox" id="d-done"> Выполнено</label><br>
-      <button class="btn btn-red" onclick="cancelTask()">Не могу</button>
-      <button class="btn btn-gray" onclick="backToList()">Назад</button>
-    </div>
-  </div>
-
-  <button class="btn btn-blue" style="margin-top:16px;" onclick="toggleBusy()">Дни занятости</button>
-  <button class="btn btn-gray" onclick="refreshState()">Обновить</button>
-  <div class="save-hint" id="save-hint"></div>
-
-  <div class="busy-box" id="busy-box">
-    <b>Укажите дни, когда вы не сможете работать:</b><br>
-    <input type="date" id="busy-date">
-    <button class="btn btn-green" onclick="addBusy()">Добавить</button>
-    <div id="busy-list"></div>
-  </div>
-
-  <div class="under">
-    <div class="under-row">
-      <b>Лента</b>
-      <button class="btn btn-blue" onclick="window.open(LENTA_URL)">Открыть ленту</button>
-    </div>
-    <div class="under-row">
-      <button class="btn btn-gray" onclick="window.location.href='mailto:'+REVIEWS_EMAIL">Написать отзыв</button>
-    </div>
-    <div class="under-row">
-      <button class="btn btn-blue" onclick="window.open(SECOND_SITE_URL)">Перейти на сайт</button>
-    </div>
-    <div class="holiday">
-      До праздника: <b id="h-name"></b>
-      <div class="countdown" id="countdown"></div>
-    </div>
+<!-- ===== ЭКРАН ВХОДА ===== -->
+<div class="login-screen" id="login-screen">
+  <div class="login-card">
+    <h2>Вход</h2>
+    <div class="login-err" id="login-err"></div>
+    <input type="text" id="in-login" placeholder="Логин или почта">
+    <input type="password" id="in-pass" placeholder="Пароль">
+    <button class="btn btn-blue" onclick="doLogin()">Войти</button>
   </div>
 </div>
 
-<!-- ===== ВКЛАДКА 2: ЧАТЫ ===== -->
-<div class="page" id="page-chats">
-  <div class="chat-box">
-    <div class="chat-msgs" id="chat-msgs"></div>
-    <div class="chat-input">
-      <input type="text" id="chat-text" placeholder="Сообщение..." onkeydown="if(event.key==='Enter')sendMsg()">
-      <button onclick="sendMsg()">➤</button>
+<!-- ===== САЙТ ===== -->
+<div id="app" style="display:none;">
+  <div class="header">
+    <a href="1.html"><button class="btn-top">Темперамент</button></a>
+    <div class="account" id="account" onclick="logout()"></div>
+  </div>
+
+  <div class="tabs" id="tabs">
+    <div class="tab active" data-page="page-tasks">Задания</div>
+    <div class="tab" data-page="page-chats">Чаты</div>
+    <div class="tab" data-page="page-links">Ссылки</div>
+    <div class="tab" data-page="page-boss" id="tab-boss" style="display:none;">Босс</div>
+  </div>
+
+  <!-- ВКЛАДКА 1: ЗАДАНИЯ -->
+  <div class="page active" id="page-tasks">
+    <div class="task-window">
+      <div id="task-list"></div>
+      <div class="task-detail" id="task-detail" style="display:none;">
+        <h3 id="d-title"></h3>
+        <p id="d-desc"></p>
+        <div class="meta">С: <span id="d-from"></span></div>
+        <div class="meta">До: <span id="d-to"></span> &nbsp;|&nbsp; Важность: <b id="d-priority"></b></div>
+        <div class="meta">Рейтинг работы: <b id="d-rating"></b></div>
+        <label><input type="checkbox" id="d-done"> Выполнено</label><br>
+        <button class="btn btn-red" onclick="cancelTask()">Не могу</button>
+        <button class="btn btn-gray" onclick="backToList()">Назад</button>
+      </div>
+    </div>
+
+    <button class="btn btn-blue" style="margin-top:16px;" onclick="toggleBusy()">Дни занятости</button>
+    <button class="btn btn-gray" onclick="refreshAll()">Обновить</button>
+    <div class="save-hint" id="save-hint"></div>
+
+    <div class="busy-box" id="busy-box">
+      <b>Дни, когда вы не сможете работать:</b><br>
+      <input type="date" id="busy-date">
+      <button class="btn btn-green" onclick="addBusy()">Добавить</button>
+      <div id="busy-list"></div>
+    </div>
+
+    <div class="under">
+      <div class="under-row">
+        <b>Лента</b>
+        <button class="btn btn-blue" onclick="window.open(URLS.lenta)">Открыть ленту</button>
+      </div>
+      <div class="under-row">
+        <button class="btn btn-gray" onclick="window.location.href='mailto:'+URLS.reviews_email">Написать отзыв</button>
+      </div>
+      <div class="under-row">
+        <button class="btn btn-blue" onclick="window.open(URLS.second_site)">Перейти на сайт</button>
+      </div>
+      <div class="holiday">
+        До праздника: <b id="h-name"></b>
+        <div class="countdown" id="countdown"></div>
+      </div>
+    </div>
+
+    <div class="done-box" id="done-box">
+      <h3>Выполненная работа</h3>
+      <div id="done-list"></div>
+    </div>
+  </div>
+
+  <!-- ВКЛАДКА 2: ЧАТЫ -->
+  <div class="page" id="page-chats">
+    <div class="chat-box">
+      <div class="chat-msgs" id="chat-msgs"></div>
+      <div class="chat-input">
+        <input type="text" id="chat-text" placeholder="Сообщение..." onkeydown="if(event.key==='Enter')sendMsg()">
+        <button onclick="sendMsg()">➤</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ВКЛАДКА 3: ССЫЛКИ -->
+  <div class="page" id="page-links">
+    <div id="links-list"></div>
+  </div>
+
+  <!-- ВКЛАДКА 4: БОСС (видна только боссу) -->
+  <div class="page" id="page-boss">
+    <div class="boss-form">
+      <h3 id="boss-form-title">Добавить задание</h3>
+      <select id="f-worker"></select>
+      <input id="f-title" placeholder="Название работы">
+      <textarea id="f-desc" rows="3" placeholder="Описание"></textarea>
+      <div style="display:flex; gap:8px;">
+        <input type="date" id="f-from" style="flex:1;">
+        <input type="date" id="f-to" style="flex:1;">
+      </div>
+      <select id="f-priority">
+        <option>Не важно</option><option>Чуть важнее</option><option>Важнее</option>
+        <option>Очень важно</option><option>Обязательно</option>
+      </select>
+      <input type="number" id="f-rating" min="1" max="5" placeholder="Рейтинг работы (1–5)">
+      <button class="btn btn-green" onclick="saveBossTask()">Сохранить задание</button>
+      <button class="btn btn-gray" onclick="clearBossForm()">Очистить</button>
+    </div>
+
+    <div class="boss-form">
+      <h3>Все задания</h3>
+      <div id="boss-tasks"></div>
+    </div>
+
+    <div class="boss-form">
+      <h3>Сотрудники: статусы и дни занятости</h3>
+      <div id="boss-staff"></div>
     </div>
   </div>
 </div>
 
-<!-- ===== ВКЛАДКА 3: ССЫЛКИ ===== -->
-<div class="page" id="page-links">
-  <div id="links-list"></div>
-</div>
-
-<script src="data.js"></script>
 <script>
 // ===== НАСТРОЙКИ ЯНДЕКС ДИСКА — ЗАПОЛНИТЕ =====
-const DISK_TOKEN = "y0__wgBENXt9rEHGN2IUCD6m77mGTCE2MvECFIl_iSGOuiVyBiPCP7HOnMdePqu";
-const DISK_PATH  = "disk:/sitedata/state.json";
+const DISK_TOKEN = "сюда-вставьте-токен";
+const DISK_DATA  = "disk:/sitedata/data.json";   // контент: аккаунты, задания, праздники, ссылки
+const DISK_STATE = "disk:/sitedata/state.json";  // живое: статусы, занятость, чат
 const DISK_API   = "https://cloud-api.yandex.net/v1/disk/resources";
 
-// ---------- ДАННЫЕ ----------
-let tasks = TASKS.map(t => ({...t}));
-let busyDays = [];
-let chat = [];
-let currentId = null;
+const PRIORITIES = ["Не важно","Чуть важнее","Важнее","Очень важно","Обязательно"];
 
-function applyState(st){
-  if (st.tasks) tasks.forEach(t => {
-    if (st.tasks[t.id]) { t.done = st.tasks[t.id].done; t.canceled = st.tasks[t.id].canceled; }
-  });
-  if (st.busyDays) busyDays = st.busyDays;
-  if (st.chat) chat = st.chat;
-}
-
-// ---------- ЧТЕНИЕ И ЗАПИСЬ НА ЯНДЕКС ДИСК ----------
-async function loadState(){
-  try {
-    const r = await fetch(DISK_API + "/download?path=" + encodeURIComponent(DISK_PATH), {
-      headers: { Authorization: "OAuth " + DISK_TOKEN }
-    });
-    if (r.status === 404) return null; // файла ещё нет — создастся при первом сохранении
-    if (!r.ok) throw new Error("HTTP " + r.status);
-    const j = await r.json();          // Диск выдаёт временную ссылку на скачивание
-    const f = await fetch(j.href);
-    return await f.json();
-  } catch(e){ console.error(e); return null; }
-}
-
+// ---------- ГЛОБАЛЬНЫЕ ДАННЫЕ ----------
+let DATA  = null;   // содержимое data.json
+let STATE = null;   // содержимое state.json
+let user  = null;   // кто вошёл
+let editingTaskId = null;
 let saveTimer = null;
-function markDirty(){
-  clearTimeout(saveTimer);
-  document.getElementById('save-hint').textContent = 'Сохранение...';
-  saveTimer = setTimeout(saveState, 1500);
+
+const PRIOS = ["Не важно","Чуть важнее","Важнее","Очень важно","Обязательно"];
+
+// ---------- ДИСК: ЧТЕНИЕ И ЗАПИСЬ ----------
+async function diskRead(path){
+  const r = await fetch(DISK_API + "/download?path=" + encodeURIComponent(path), {
+    headers: { Authorization: "OAuth " + DISK_TOKEN }
+  });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  const j = await r.json();
+  const f = await fetch(j.href);
+  return await f.json();
 }
 
-async function saveState(){
-  try {
-    const state = {
-      tasks: Object.fromEntries(tasks.map(t => [t.id, { done: !!t.done, canceled: !!t.canceled }])),
-      busyDays: busyDays,
-      chat: chat
-    };
-    // 1. Просим у Диска ссылку для загрузки (с перезаписью поверх старой версии)
-    const r = await fetch(DISK_API + "/upload?overwrite=true&path=" + encodeURIComponent(DISK_PATH), {
-      headers: { Authorization: "OAuth " + DISK_TOKEN }
-    });
-    if (!r.ok) throw new Error("HTTP " + r.status);
-    const { href } = await r.json();
-    // 2. Кладём файл по этой ссылке — токен тут уже не нужен
-    const up = await fetch(href, { method: "PUT", body: JSON.stringify(state, null, 2) });
-    document.getElementById('save-hint').textContent =
-      up.ok ? 'Сохранено ✔' : 'Ошибка загрузки — попробуйте ещё раз';
-  } catch(e){
-    console.error(e);
-    document.getElementById('save-hint').textContent = 'Ошибка соединения с Диском';
-  }
+async function diskWrite(path, obj){
+  const r = await fetch(DISK_API + "/upload?overwrite=true&path=" + encodeURIComponent(path), {
+    headers: { Authorization: "OAuth " + DISK_TOKEN }
+  });
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  const { href } = await r.json();
+  const up = await fetch(href, { method: "PUT", body: JSON.stringify(obj, null, 2) });
+  return up.ok;
 }
 
-async function refreshState(){
-  const s = await loadState();
-  if (s) { applyState(s); renderList(); renderChat(); renderBusy(); }
+// ---------- ВХОД ----------
+function doLogin(){
+  const lg = document.getElementById('in-login').value.trim().toLowerCase();
+  const pw = document.getElementById('in-pass').value;
+  const acc = (DATA.accounts || []).find(a =>
+    (a.login.toLowerCase() === lg || (a.email || '').toLowerCase() === lg) && a.password === pw);
+  if (!acc) { document.getElementById('login-err').textContent = 'Неверный логин или пароль'; return; }
+  user = acc;
+  localStorage.setItem('session', acc.login);
+  enterApp();
+}
+
+function logout(){
+  user = null;
+  localStorage.removeItem('session');
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+}
+
+function enterApp(){
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  document.getElementById('account').textContent = user.name + ' · выйти';
+  document.getElementById('tab-boss').style.display = user.role === 'boss' ? 'block' : 'none';
+  fillWorkerSelect();
+  renderAll();
 }
 
 // ---------- ВКЛАДКИ ----------
@@ -211,25 +288,34 @@ document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
   document.getElementById(t.dataset.page).classList.add('active');
 });
 
-// ---------- ЗАДАНИЯ ----------
+// ---------- ЗАДАНИЯ: ВИД СОТРУДНИКА ----------
+function myTasks(){
+  if (user.role === 'boss') return DATA.tasks;
+  return DATA.tasks.filter(t => t.worker === user.login && !isCanceled(t.id));
+}
+function statusOf(id){ return (STATE && STATE.statuses && STATE.statuses[id]) || {done:false, canceled:false}; }
+function isCanceled(id){ return statusOf(id).canceled; }
+function isDone(id){ return statusOf(id).done; }
+function nameOf(login){ const a = (DATA.accounts||[]).find(x => x.login === login); return a ? a.name : login; }
+
 function renderList(){
   const box = document.getElementById('task-list');
   box.innerHTML = '';
-  const visible = tasks.filter(t => !t.canceled);
+  const visible = myTasks().filter(t => !isCanceled(t.id));
   if (visible.length === 0) box.innerHTML = '<div class="task-row">Заданий нет</div>';
   visible.forEach(t => {
     const row = document.createElement('div');
     row.className = 'task-row';
-    row.innerHTML = `<span>${t.title}</span>
-      <span class="${t.done ? 'status-done' : 'status-not'}">${t.done ? 'Готово' : 'Не готово'}</span>`;
+    const who = user.role === 'boss' ? ' <small style="color:#888">(' + nameOf(t.worker) + ')</small>' : '';
+    row.innerHTML = `<span>${t.title}${who}</span>
+      <span class="${isDone(t.id) ? 'status-done' : 'status-not'}">${isDone(t.id) ? 'Готово' : 'Не готово'}</span>`;
     row.onclick = () => openTask(t.id);
     box.appendChild(row);
   });
 }
 
 function openTask(id){
-  currentId = id;
-  const t = tasks.find(x => x.id === id);
+  const t = DATA.tasks.find(x => x.id === id);
   document.getElementById('task-list').style.display = 'none';
   document.getElementById('task-detail').style.display = 'block';
   document.getElementById('d-title').textContent = t.title;
@@ -238,24 +324,56 @@ function openTask(id){
   document.getElementById('d-to').textContent = t.to;
   document.getElementById('d-priority').textContent = t.priority;
   document.getElementById('d-rating').textContent = t.rating + ' / 5';
-  document.getElementById('d-done').checked = t.done;
-  document.getElementById('d-done').onchange = e => { t.done = e.target.checked; markDirty(); };
+  const cb = document.getElementById('d-done');
+  cb.checked = isDone(t.id);
+  cb.onchange = e => { setStatus(t.id, { done: e.target.checked }); };
 }
 
 function backToList(){
   document.getElementById('task-detail').style.display = 'none';
   document.getElementById('task-list').style.display = 'block';
-  renderList();
+  renderList(); renderDoneBox();
 }
 
 function cancelTask(){
-  const t = tasks.find(x => x.id === currentId);
-  t.canceled = true;
-  markDirty();
+  setStatus(currentId(), { canceled: true });
   backToList();
+}
+function currentId(){ return openTaskId; }
+let openTaskId = null;
+const _openTask = openTask;
+openTask = function(id){ openTaskId = id; _openTask(id); };
+
+// ---------- СОХРАНЕНИЕ СОСТОЯНИЯ ----------
+function markDirty(){
+  clearTimeout(saveTimer);
+  document.getElementById('save-hint').textContent = 'Сохранение...';
+  saveTimer = setTimeout(saveState, 1500);
+}
+
+async function saveState(){
+  try {
+    const ok = await diskWrite(DISK_STATE, STATE);
+    document.getElementById('save-hint').textContent = ok ? 'Сохранено ✔' : 'Ошибка загрузки';
+  } catch(e){ document.getElementById('save-hint').textContent = 'Ошибка соединения с Диском'; }
+}
+
+function setStatus(taskId, patch){
+  if (!STATE) STATE = {};
+  if (!STATE.statuses) STATE.statuses = {};
+  const s = STATE.statuses[taskId] || { done:false, canceled:false };
+  STATE.statuses[taskId] = Object.assign(s, patch);
+  markDirty();
+}
+
+async function saveData(){
+  const ok = await diskWrite(DISK_DATA, DATA);
+  document.getElementById('save-hint').textContent = ok ? 'Сохранено ✔' : 'Ошибка сохранения';
 }
 
 // ---------- ДНИ ЗАНЯТОСТИ ----------
+function myBusy(){ return (STATE && STATE.busyDays && STATE.busyDays[user.login]) || []; }
+
 function toggleBusy(){
   const b = document.getElementById('busy-box');
   b.style.display = b.style.display === 'none' ? 'block' : 'none';
@@ -263,75 +381,188 @@ function toggleBusy(){
 }
 function addBusy(){
   const d = document.getElementById('busy-date').value;
-  if (d && !busyDays.includes(d)) { busyDays.push(d); markDirty(); renderBusy(); }
+  if (!d) return;
+  if (!STATE.busyDays) STATE.busyDays = {};
+  const arr = STATE.busyDays[user.login] || [];
+  if (!arr.includes(d)) { arr.push(d); STATE.busyDays[user.login] = arr; markDirty(); }
+  renderBusy();
 }
 function removeBusy(d){
-  busyDays = busyDays.filter(x => x !== d); markDirty(); renderBusy();
+  STATE.busyDays[user.login] = STATE.busyDays[user.login].filter(x => x !== d);
+  markDirty(); renderBusy();
 }
 function renderBusy(){
+  const arr = myBusy();
   document.getElementById('busy-list').innerHTML =
-    busyDays.map(d => `<div class="busy-item"><span>${d}</span><span class="status-not" style="cursor:pointer" onclick="removeBusy('${d}')">✕</span></div>`).join('') || '<div class="busy-item" style="color:#999">Пока ничего не указано</div>';
+    arr.map(d => `<div class="busy-item"><span>${d}</span><span class="status-not" style="cursor:pointer" onclick="removeBusy('${d}')">✕</span></div>`).join('')
+    || '<div class="busy-item" style="color:#999">Пока ничего не указано</div>';
+}
+
+// ---------- ПАНЕЛЬ БОССА ----------
+function fillWorkerSelect(){
+  const sel = document.getElementById('f-worker');
+  sel.innerHTML = (DATA.accounts || []).filter(a => a.role === 'worker')
+    .map(a => `<option value="${a.login}">${a.name}</option>`).join('');
+}
+
+function saveBossTask(){
+  const title = document.getElementById('f-title').value.trim();
+  const worker = document.getElementById('f-worker').value;
+  if (!title || !worker) { document.getElementById('save-hint').textContent = 'Укажите название и сотрудника'; return; }
+  const t = {
+    id: editingTaskId || Math.max(0, ...DATA.tasks.map(x => x.id || 0)) + 1,
+    worker, title,
+    desc: document.getElementById('f-desc').value,
+    from: document.getElementById('f-from').value,
+    to: document.getElementById('f-to').value,
+    priority: document.getElementById('f-priority').value,
+    rating: Number(document.getElementById('f-rating').value) || 3
+  };
+  if (editingTaskId) {
+    const i = DATA.tasks.findIndex(x => x.id === editingTaskId);
+    DATA.tasks[i] = t;
+  } else {
+    DATA.tasks.push(t);
+  }
+  clearBossForm();
+  saveData().then(renderAll);
+}
+
+function editBossTask(id){
+  const t = DATA.tasks.find(x => x.id === id);
+  editingTaskId = id;
+  document.getElementById('boss-form-title').textContent = 'Редактировать задание №' + id;
+  document.getElementById('f-worker').value = t.worker;
+  document.getElementById('f-title').value = t.title;
+  document.getElementById('f-desc').value = t.desc;
+  document.getElementById('f-from').value = t.from;
+  document.getElementById('f-to').value = t.to;
+  document.getElementById('f-priority').value = t.priority;
+  document.getElementById('f-rating').value = t.rating;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function deleteBossTask(id){
+  if (!confirm('Удалить задание №' + id + '?')) return;
+  DATA.tasks = DATA.tasks.filter(x => x.id !== id);
+  if (STATE && STATE.statuses) delete STATE.statuses[id];
+  saveData(); saveState().then(renderAll);
+}
+
+function clearBossForm(){
+  editingTaskId = null;
+  document.getElementById('boss-form-title').textContent = 'Добавить задание';
+  ['f-title','f-desc','f-from','f-to','f-rating'].forEach(id => document.getElementById(id).value = '');
+}
+
+function renderBoss(){
+  const bt = document.getElementById('boss-tasks');
+  bt.innerHTML = DATA.tasks.map(t => `
+    <div class="boss-list-item" onclick="editBossTask(${t.id})">
+      <span><b>${t.title}</b> → ${nameOf(t.worker)}</span>
+      <span>
+        <span class="${isDone(t.id) ? 'status-done' : 'status-not'}">${isDone(t.id) ? 'Готово' : 'Не готово'}${isCanceled(t.id) ? ' · отменено' : ''}</span>
+        <button class="btn btn-red" style="padding:4px 10px; margin:0 0 0 8px;" onclick="event.stopPropagation();deleteBossTask(${t.id})">✕</button>
+      </span>
+    </div>`).join('') || '<div class="boss-list-item">Заданий пока нет</div>';
+
+  const staff = document.getElementById('boss-staff');
+  staff.innerHTML = (DATA.accounts || []).filter(a => a.role === 'worker').map(a => {
+    const busy = (STATE && STATE.busyDays && STATE.busyDays[a.login]) || [];
+    const mine = DATA.tasks.filter(t => t.worker === a.login);
+    const done = mine.filter(t => isDone(t.id) && !isCanceled(t.id)).length;
+    const canceled = mine.filter(t => isCanceled(t.id)).length;
+    return `<div class="staff-card">
+      <h4>${a.name}</h4>
+      <div class="meta">Выполнено: <b style="color:#2e7d32">${done}</b> из ${mine.length - canceled}${canceled ? ' · отменено: ' + canceled : ''}</div>
+      <div class="meta">Не сможет работать: ${busy.length ? busy.join(', ') : 'все дни свободны'}</div>
+      <div class="meta">Задания: ${mine.map(t => t.title + ' — ' + (isCanceled(t.id) ? 'отменено' : (isDone(t.id) ? 'готово' : 'не готово'))).join('; ') || 'нет'}</div>
+    </div>`;
+  }).join('');
+}
+
+// ---------- ВЫПОЛНЕННАЯ РАБОТА ВНИЗУ ----------
+function renderDoneBox(){
+  const box = document.getElementById('done-list');
+  let list;
+  if (user.role === 'boss') {
+    list = DATA.tasks.filter(t => isDone(t.id) && !isCanceled(t.id))
+      .map(t => `<div class="done-item">✔ ${t.title} — ${nameOf(t.worker)} (рейтинг ${t.rating}/5, до ${t.to})</div>`);
+  } else {
+    list = DATA.tasks.filter(t => t.worker === user.login && isDone(t.id) && !isCanceled(t.id))
+      .map(t => `<div class="done-item">✔ ${t.title} (рейтинг ${t.rating}/5, до ${t.to})</div>`);
+  }
+  box.innerHTML = list.join('') || '<div class="done-item">Пока ничего не выполнено</div>';
 }
 
 // ---------- ЧАТ ----------
 function renderChat(){
   const box = document.getElementById('chat-msgs');
-  box.innerHTML = chat.map(m => `<div class="msg ${m.me ? 'me' : 'other'}">${m.text}</div>`).join('');
+  box.innerHTML = ((STATE && STATE.chat) || []).map(m =>
+    `<div class="msg ${m.who === user.login ? 'me' : 'other'}"><b>${m.name}:</b> ${m.text}</div>`).join('');
   box.scrollTop = box.scrollHeight;
 }
 function sendMsg(){
   const inp = document.getElementById('chat-text');
   if (!inp.value.trim()) return;
-  chat.push({ me:true, text: inp.value });
+  if (!STATE.chat) STATE.chat = [];
+  STATE.chat.push({ who: user.login, name: user.name, text: inp.value });
   inp.value = '';
-  renderChat();
-  markDirty();
+  renderChat(); markDirty();
 }
 
 // ---------- ССЫЛКИ ----------
 function renderLinks(){
   document.getElementById('links-list').innerHTML =
-    LINKS.map(l => `<div class="link-item"><a href="${l.url}" target="_blank">${l.name}</a></div>`).join('');
+    (DATA.links || []).map(l => `<div class="link-item"><a href="${l.url}" target="_blank">${l.name}</a></div>`).join('');
 }
 
 // ---------- СЧЁТЧИК ДО ПРАЗДНИКА ----------
 function nearestHoliday(){
   const now = new Date();
-  return HOLIDAYS.map(h => ({...h, t: new Date(h.date + 'T00:00:00')}))
-    .filter(h => h.t > now)
-    .sort((a,b) => a.t - b.t)[0];
+  return (DATA.holidays || []).map(h => ({...h, t: new Date(h.date + 'T00:00:00')}))
+    .filter(h => h.t > now).sort((a,b) => a.t - b.t)[0];
 }
 function tick(){
   const h = nearestHoliday();
   const el = document.getElementById('h-name');
   if (!h) { el.textContent = '—'; document.getElementById('countdown').textContent = 'Праздников больше нет'; return; }
   el.textContent = h.name;
-  let diff = h.t - new Date();
-  const d = Math.floor(diff / 86400000);
-  const hh = Math.floor(diff / 3600000) % 24;
-  const mm = Math.floor(diff / 60000) % 60;
-  const ss = Math.floor(diff / 1000) % 60;
+  const diff = h.t - new Date();
+  const d = Math.floor(diff / 86400000), hh = Math.floor(diff / 3600000) % 24,
+        mm = Math.floor(diff / 60000) % 60, ss = Math.floor(diff / 1000) % 60;
   document.getElementById('countdown').textContent = `${d} дн. ${hh} ч. ${mm} мин. ${ss} сек.`;
 }
 
-document.getElementById('account').textContent = localStorage.getItem('user_name') || 'Имя Фамилия';
+// ---------- ОБЩИЙ РЕНДЕР И ОБНОВЛЕНИЕ ----------
+function renderAll(){
+  renderList(); renderChat(); renderLinks(); renderBusy(); renderDoneBox();
+  if (user.role === 'boss') renderBoss();
+}
+
+async function refreshAll(){
+  try {
+    STATE = await diskRead(DISK_STATE) || { statuses:{}, busyDays:{}, chat:[] };
+    renderAll();
+  } catch(e){ document.getElementById('save-hint').textContent = 'Ошибка соединения'; }
+}
 
 // ---------- ЗАПУСК ----------
 (async function(){
-  const st = await loadState();
-  if (st) applyState(st);
-  renderList(); renderChat(); renderLinks(); renderBusy(); tick();
-  setInterval(tick, 1000);
-  // каждые 8 секунд подтягиваем новые сообщения и статусы
-  setInterval(async () => {
-    const s = await loadState();
-    if (s) {
-      const before = JSON.stringify(chat);
-      applyState(s);
-      if (JSON.stringify(chat) !== before) renderChat();
-      renderList();
-    }
-  }, 8000);
+  try {
+    DATA = await diskRead(DISK_DATA);
+    if (!DATA) { alert('Не найден data.json на Диске — создайте его в папке sitedata'); return; }
+    STATE = await diskRead(DISK_STATE) || { statuses:{}, busyDays:{}, chat:[] };
+
+    const saved = localStorage.getItem('session');
+    const acc = saved && (DATA.accounts || []).find(a => a.login === saved);
+    if (acc) { user = acc; enterApp(); }
+    setInterval(tick, 1000);
+    setInterval(refreshAll, 8000); // подтягиваем чужие изменения
+  } catch(e){
+    console.error(e);
+    alert('Не удалось подключиться к Диску. Проверьте токен и доступ.');
+  }
 })();
 </script>
 </body>
