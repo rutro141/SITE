@@ -235,9 +235,9 @@ async function diskRead(path){
   const r = await fetch(DISK_API + "/download?path=" + encodeURIComponent(path), {
     headers: { Authorization: "OAuth " + DISK_TOKEN }
   });
-  if (r.status === 404) return null;
+  if (r.status === 404) return null; // файла ещё нет
   if (!r.ok) throw new Error("HTTP " + r.status);
-  const j = await r.json();
+  const j = await r.json();          // Диск выдаёт временную ссылку на скачивание
   const f = await fetch(j.href);
   return await f.json();
 }
