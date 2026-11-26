@@ -215,8 +215,8 @@
 <script>
  // ===== НАСТРОЙКИ JSONBOX — ВСТАВЬТЕ СВОИ КЛЮЧИ =====
 const JB_URL   = "https://jsonbox.ru/api.php";
-const JB_KEY   = "8aac11526371e8bbfca305ca8a3dd962";
-const JB_KEYRO = "ro_12170a6925b57cd83217c9ea34a0ee26";
+const JB_KEY   = "ВАШ_ПОЛНЫЙ_КЛЮЧ";
+const JB_KEYRO = "ro_ВАШ_КЛЮЧ_ЧТЕНИЯ";
 
 const DISK_DATA  = "data";    // ключ-раздел в jsonbox: аккаунты, задания, праздники, ссылки
 const DISK_STATE = "state";   // ключ-раздел в jsonbox: статусы, занятость, чат
@@ -257,13 +257,25 @@ async function diskWrite(file, obj){
   return r.ok;
 }
 
+// ---------- ХЭШИРОВАНИЕ ПАРОЛЕЙ ----------
+async function hashPassword(pw){
+  const buf = await crypto.subtle.digest('SHA-256',
+    new TextEncoder().encode("smyk4salt::" + pw));
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
 // ---------- ВХОД ----------
-function doLogin(){
+async function doLogin(){
   const lg = document.getElementById('in-login').value.trim().toLowerCase();
   const pw = document.getElementById('in-pass').value;
   const acc = (DATA.accounts || []).find(a =>
-    (a.login.toLowerCase() === lg || (a.email || '').toLowerCase() === lg) && a.password === pw);
+    a.login.toLowerCase() === lg || (a.email || '').toLowerCase() === lg);
   if (!acc) { document.getElementById('login-err').textContent = 'Неверный логин или пароль'; return; }
+  const h = await hashPassword(pw);
+  if (acc.passwordHash !== h) {
+    document.getElementById('login-err').textContent = 'Неверный логин или пароль';
+    return;
+  }
   user = acc;
   localStorage.setItem('session', acc.login);
   enterApp();
@@ -556,7 +568,7 @@ async function refreshAll(){
 (async function(){
   try {
     DATA = await diskRead(DISK_DATA);
-    if (!DATA) { alert('Не найден раздел data в jsonbox — выполните один раз diskWrite(DISK_DATA, {...}) или запишите данные в личном кабинете jsonbox'); return; }
+    if (!DATA) { alert('Не найден раздел data в jsonbox — выполните один раз команду создания данных из консоли (F12)'); return; }
     STATE = await diskRead(DISK_STATE) || { statuses:{}, busyDays:{}, chat:[] };
 
     const saved = localStorage.getItem('session');
