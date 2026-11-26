@@ -213,11 +213,13 @@
 </div>
 
 <script>
- // ===== НАСТРОЙКИ ЯНДЕКС ДИСКА — ЗАПОЛНИТЕ =====
-const DISK_TOKEN = "y0__wgBEOC4mZgJGNuWAyDFyfXnGXLCOPGN3nf2wEnUAy80AFYEnfxC";
-const DISK_DATA  = "disk:/sitedata/data.json";   // контент: аккаунты, задания, праздники, ссылки
-const DISK_STATE = "disk:/sitedata/state.json";  // живое: статусы, занятость, чат
-const DISK_API   = "https://cloud-api.yandex.net/v1/disk/resources";
+ // ===== НАСТРОЙКИ JSONBOX — ВСТАВЬТЕ СВОИ КЛЮЧИ =====
+const JB_URL   = "https://jsonbox.ru/api.php";
+const JB_KEY   = "8aac11526371e8bbfca305ca8a3dd962";
+const JB_KEYRO = "ro_12170a6925b57cd83217c9ea34a0ee26";
+
+const DISK_DATA  = "data";    // ключ-раздел в jsonbox: аккаунты, задания, праздники, ссылки
+const DISK_STATE = "state";   // ключ-раздел в jsonbox: статусы, занятость, чат
 
 const PRIORITIES = ["Не важно","Чуть важнее","Важнее","Очень важно","Обязательно"];
 
@@ -230,26 +232,29 @@ let saveTimer = null;
 
 const PRIOS = ["Не важно","Чуть важнее","Важнее","Очень важно","Обязательно"];
 
-// ---------- ДИСК: ЧТЕНИЕ И ЗАПИСЬ ----------
-async function diskRead(path){
-  const r = await fetch(DISK_API + "/download?path=" + encodeURIComponent(path), {
-    headers: { Authorization: "OAuth " + DISK_TOKEN }
-  });
-  if (r.status === 404) return null; // файла ещё нет
-  if (!r.ok) throw new Error("HTTP " + r.status);
-  const j = await r.json();          // Диск выдаёт временную ссылку на скачивание
-  const f = await fetch(j.href);
-  return await f.json();
+// ---------- JSONBOX: ЧТЕНИЕ И ЗАПИСЬ ----------
+async function jbGet(key){
+  const r = await fetch(JB_URL + "?action=get",
+    { headers: { Authorization: "Bearer " + key } });
+  if (!r.ok) return null;
+  const j = await r.json();
+  return (j && j.data) || null;
 }
 
-async function diskWrite(path, obj){
-  const r = await fetch(DISK_API + "/upload?overwrite=true&path=" + encodeURIComponent(path), {
-    headers: { Authorization: "OAuth " + DISK_TOKEN }
+async function diskRead(file){
+  const doc = await jbGet(JB_KEYRO);
+  return doc && doc[file] !== undefined ? doc[file] : null;
+}
+
+async function diskWrite(file, obj){
+  const doc = (await jbGet(JB_KEY)) || {};
+  doc[file] = obj;
+  const r = await fetch(JB_URL + "?action=store", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + JB_KEY },
+    body: JSON.stringify({ data: doc })
   });
-  if (!r.ok) throw new Error("HTTP " + r.status);
-  const { href } = await r.json();
-  const up = await fetch(href, { method: "PUT", body: JSON.stringify(obj, null, 2) });
-  return up.ok;
+  return r.ok;
 }
 
 // ---------- ВХОД ----------
@@ -355,7 +360,7 @@ async function saveState(){
   try {
     const ok = await diskWrite(DISK_STATE, STATE);
     document.getElementById('save-hint').textContent = ok ? 'Сохранено ✔' : 'Ошибка загрузки';
-  } catch(e){ document.getElementById('save-hint').textContent = 'Ошибка соединения с Диском'; }
+  } catch(e){ document.getElementById('save-hint').textContent = 'Ошибка соединения'; }
 }
 
 function setStatus(taskId, patch){
@@ -551,7 +556,7 @@ async function refreshAll(){
 (async function(){
   try {
     DATA = await diskRead(DISK_DATA);
-    if (!DATA) { alert('Не найден data.json на Диске — создайте его в папке sitedata'); return; }
+    if (!DATA) { alert('Не найден раздел data в jsonbox — выполните один раз diskWrite(DISK_DATA, {...}) или запишите данные в личном кабинете jsonbox'); return; }
     STATE = await diskRead(DISK_STATE) || { statuses:{}, busyDays:{}, chat:[] };
 
     const saved = localStorage.getItem('session');
@@ -561,7 +566,7 @@ async function refreshAll(){
     setInterval(refreshAll, 8000); // подтягиваем чужие изменения
   } catch(e){
     console.error(e);
-    alert('Не удалось подключиться к Диску. Проверьте токен и доступ.');
+    alert('Не удалось подключиться к jsonbox. Проверьте ключи и консоль браузера (F12).');
   }
 })();
 </script>
