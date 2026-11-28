@@ -190,7 +190,7 @@
     <div class="under">
       <div class="under-row">
         <b>Лента</b>
-        <button class="btn btn-blue" onclick="window.open(URLS.lenta)">Открыть ленту</button>
+        <button class="btn btn-blue" onclick="openLenta()">Открыть ленту</button>
       </div>
       <div class="under-row">
         <button class="btn btn-gray" onclick="window.location.href='mailto:'+URLS.reviews_email">Написать отзыв</button>
@@ -223,6 +223,15 @@
 
   <!-- ВКЛАДКА 3: ССЫЛКИ -->
   <div class="page" id="page-links">
+    <!-- Форма добавления ссылок: видна только боссу и генбоссу -->
+    <div class="boss-form" id="links-form" style="display:none;">
+      <h3>Добавить ссылку</h3>
+      <input id="f-link-name" placeholder="Название ссылки (например: Лента новостей)">
+      <input id="f-link-url" placeholder="Адрес (например: https://example.com)">
+      <button class="btn btn-green" onclick="addLink()">Добавить</button>
+      <div class="meta">Ссылка сразу появится у всех сотрудников.</div>
+    </div>
+
     <div id="links-list"></div>
   </div>
 
@@ -254,6 +263,23 @@
     <div class="boss-form">
       <h3>Сотрудники: статусы и дни занятости</h3>
       <div id="boss-staff"></div>
+    </div>
+
+    <!-- ПРАЗДНИКИ: босс и генбосс -->
+    <div class="boss-form">
+      <h3>Праздники</h3>
+      <input id="f-hol-name" placeholder="Название праздника (например: Новый год)">
+      <input type="date" id="f-hol-date">
+      <button class="btn btn-green" onclick="addHoliday()">Добавить праздник</button>
+      <div id="holidays-list" style="margin-top:8px;"></div>
+    </div>
+
+    <!-- НАСТРОЙКА ЛЕНТЫ: босс и генбосс -->
+    <div class="boss-form">
+      <h3>Адрес ленты</h3>
+      <input id="f-lenta" placeholder="https://... — куда ведёт кнопка «Открыть ленту»">
+      <button class="btn btn-green" onclick="saveLenta()">Сохранить адрес ленты</button>
+      <div class="meta">Сейчас: <b id="lenta-current" style="color:#1565c0"></b></div>
     </div>
 
     <div class="boss-form">
@@ -290,10 +316,13 @@ let editingTaskId = null;
 let saveTimer = null;
 let URLS = {};      // urls из DATA: лента, почта отзывов, второй сайт
 
+// защита от гонок при сохранении/обновлении
+let savingNow = false;     // прямо сейчас идёт запись на сервер
+let pendingSave = false;   // есть несохранённые локальные правки
+
 const PRIOS = ["Не важно","Чуть важнее","Важнее","Очень важно","Обязательно"];
 
 // ---------- РОЛИ ----------
-// Оба босса имеют полный доступ к панели босса; genboss дополнительно управляет сотрудниками
 const isBoss    = u => u && (u.role === 'boss' || u.role === 'genboss');
 const isGenBoss = u => u && u.role === 'genboss';
 
@@ -359,6 +388,7 @@ function enterApp(){
   document.getElementById('account').textContent = user.name + ' · выйти';
   document.getElementById('tab-boss').style.display = isBoss(user) ? 'block' : 'none';
   document.getElementById('genboss-panel').style.display = isGenBoss(user) ? 'block' : 'none';
+  document.getElementById('links-form').style.display = isBoss(user) ? 'block' : 'none';
   fillWorkerSelect();
   renderAll();
 }
@@ -372,7 +402,6 @@ document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
 });
 
 // ---------- ЗАДАНИЯ: ВИД СОТРУДНИКА ----------
-// Работник видит ТОЛЬКО задания, назначенные лично ему
 function myTasks(){
   if (isBoss(user)) return DATA.tasks;
   return DATA.tasks.filter(t => t.worker === user.login && !isCanceled(t.id));
@@ -381,7 +410,6 @@ function statusOf(id){ return (STATE && STATE.statuses && STATE.statuses[id]) ||
 function isCanceled(id){ return statusOf(id).canceled; }
 function isDone(id){ return statusOf(id).done; }
 function nameOf(login){ const a = (DATA.accounts||[]).find(x => x.login === login); return a ? a.name : login; }
-// может ли текущий пользователь менять статус этого задания
 function canChangeStatus(taskId){
   if (isBoss(user)) return true;
   const t = (DATA.tasks || []).find(x => x.id === taskId);
@@ -407,7 +435,6 @@ function renderList(){
 function openTask(id){
   const t = DATA.tasks.find(x => x.id === id);
   if (!t) return;
-  // Работник может открыть только СВОЁ задание
   if (!isBoss(user) && t.worker !== user.login) return;
   document.getElementById('task-list').style.display = 'none';
   document.getElementById('task-detail').style.display = 'block';
@@ -420,7 +447,7 @@ function openTask(id){
   const cb = document.getElementById('d-done');
   cb.checked = isDone(t.id);
   cb.onchange = e => {
-    if (!canChangeStatus(t.id)) {           // чужое задание — галочку не даём
+    if (!canChangeStatus(t.id)) {
       e.target.checked = isDone(t.id);
       document.getElementById('save-hint').textContent = 'Это не ваше задание — галочку поставить нельзя';
       return;
@@ -436,7 +463,7 @@ function backToList(){
 }
 
 function cancelTask(){
-  if (!canChangeStatus(currentId())) {      // чужое задание — «Не могу» не работает
+  if (!canChangeStatus(currentId())) {
     document.getElementById('save-hint').textContent = 'Это не ваше задание — отменить его нельзя';
     return;
   }
@@ -456,13 +483,17 @@ function markDirty(){
 }
 
 async function saveState(){
+  if (savingNow) { pendingSave = true; return; }
+  savingNow = true;
+  clearTimeout(saveTimer);
   try {
     const ok = await diskWrite(DISK_STATE, STATE);
-    document.getElementById('save-hint').textContent = ok ? 'Сохранено ✔' : 'Ошибка загрузки';
+    document.getElementById('save-hint').textContent = ok ? 'Сохранено ✔' : 'Ошибка сохранения — проверьте ключи';
   } catch(e){ document.getElementById('save-hint').textContent = 'Ошибка соединения'; }
+  savingNow = false;
+  if (pendingSave) { pendingSave = false; saveState(); }
 }
 
-// Единая точка изменения статусов: работник может менять только СВОИ задания
 function setStatus(taskId, patch){
   if (!canChangeStatus(taskId)) return;
   if (!STATE) STATE = {};
@@ -485,18 +516,33 @@ function toggleBusy(){
   b.style.display = b.style.display === 'none' ? 'block' : 'none';
   renderBusy();
 }
-function addBusy(){
-  const d = document.getElementById('busy-date').value;
-  if (!d) return;
+
+async function addBusy(){
+  if (!STATE) STATE = {};
   if (!STATE.busyDays) STATE.busyDays = {};
+  const d = document.getElementById('busy-date').value;
+  if (!d) {
+    document.getElementById('save-hint').textContent = '⚠ Выберите дату в поле выше';
+    return;
+  }
   const arr = STATE.busyDays[user.login] || [];
-  if (!arr.includes(d)) { arr.push(d); STATE.busyDays[user.login] = arr; markDirty(); }
+  if (arr.includes(d)) {
+    document.getElementById('save-hint').textContent = 'Этот день уже добавлен';
+    return;
+  }
+  arr.push(d);
+  STATE.busyDays[user.login] = arr;
   renderBusy();
+  await saveState();
 }
-function removeBusy(d){
-  STATE.busyDays[user.login] = STATE.busyDays[user.login].filter(x => x !== d);
-  markDirty(); renderBusy();
+
+async function removeBusy(d){
+  if (!STATE.busyDays) STATE.busyDays = {};
+  STATE.busyDays[user.login] = (STATE.busyDays[user.login] || []).filter(x => x !== d);
+  renderBusy();
+  await saveState();
 }
+
 function renderBusy(){
   const arr = myBusy();
   document.getElementById('busy-list').innerHTML =
@@ -517,7 +563,6 @@ async function clearChat(){
 // ---------- ПАНЕЛЬ БОССА ----------
 function fillWorkerSelect(){
   const sel = document.getElementById('f-worker');
-  // генбосс может давать задания и работникам, и боссам; обычный босс — только работникам
   const pool = (DATA.accounts || []).filter(a =>
     a.role === 'worker' || (isGenBoss(user) && a.role === 'boss'));
   sel.innerHTML = pool.map(a => `<option value="${a.login}">${a.name}${a.role === 'boss' ? ' ⭐ (босс)' : ''}</option>`).join('');
@@ -552,7 +597,7 @@ function editBossTask(id){
   const t = DATA.tasks.find(x => x.id === id);
   editingTaskId = id;
   document.getElementById('boss-form-title').textContent = 'Редактировать задание №' + id;
-  fillWorkerSelect(); // пересобрать список — вдруг роли изменились
+  fillWorkerSelect();
   document.getElementById('f-worker').value = t.worker;
   document.getElementById('f-title').value = t.title;
   document.getElementById('f-desc').value = t.desc;
@@ -603,7 +648,79 @@ function renderBoss(){
     </div>`;
   }).join('');
 
+  renderHolidays();
+  const lc = document.getElementById('lenta-current');
+  if (lc) lc.textContent = URLS.lenta || 'не задан';
+
   if (isGenBoss(user)) renderGenBossAccounts();
+}
+
+// ---------- ПРАЗДНИКИ: босс и генбосс ----------
+async function addHoliday(){
+  if (!isBoss(user)) return;
+  const name = document.getElementById('f-hol-name').value.trim();
+  const date = document.getElementById('f-hol-date').value;
+  if (!name || !date) {
+    document.getElementById('save-hint').textContent = '⚠ Укажите название и дату праздника';
+    return;
+  }
+  if (!DATA.holidays) DATA.holidays = [];
+  DATA.holidays.push({ name, date });
+  document.getElementById('f-hol-name').value = '';
+  document.getElementById('f-hol-date').value = '';
+  const ok = await saveData();
+  document.getElementById('save-hint').textContent = ok ? 'Праздник добавлен ✔' : 'Ошибка сохранения';
+  renderAll();
+}
+
+async function deleteHoliday(i){
+  if (!isBoss(user)) return;
+  const h = (DATA.holidays || [])[i];
+  if (!h) return;
+  if (!confirm(`Удалить праздник «${h.name}»?`)) return;
+  DATA.holidays.splice(i, 1);
+  const ok = await saveData();
+  document.getElementById('save-hint').textContent = ok ? 'Праздник удалён ✔' : 'Ошибка сохранения';
+  renderAll();
+}
+
+function renderHolidays(){
+  const box = document.getElementById('holidays-list');
+  if (!box) return;
+  box.innerHTML = (DATA.holidays || []).map((h, i) => `
+    <div class="busy-item">
+      <span>${h.name} — <b>${h.date}</b></span>
+      <span class="status-not" style="cursor:pointer" onclick="deleteHoliday(${i})">✕</span>
+    </div>`).join('') || '<div class="busy-item" style="color:#999">Праздников пока нет</div>';
+}
+
+// ---------- АДРЕС ЛЕНТЫ: босс и генбосс ----------
+async function saveLenta(){
+  if (!isBoss(user)) return;
+  const url = document.getElementById('f-lenta').value.trim();
+  if (!url) { document.getElementById('save-hint').textContent = '⚠ Введите адрес ленты'; return; }
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    document.getElementById('save-hint').textContent = '⚠ Адрес должен начинаться с http:// или https://';
+    return;
+  }
+  if (!DATA.urls) DATA.urls = {};
+  DATA.urls.lenta = url;
+  URLS = DATA.urls;
+  const ok = await saveData();
+  document.getElementById('save-hint').textContent = ok ? 'Адрес ленты сохранён ✔' : 'Ошибка сохранения';
+  renderBoss();
+}
+
+// Кнопка «Открыть ленту»: работает только если адрес задан
+function openLenta(){
+  if (URLS.lenta && (URLS.lenta.startsWith('http://') || URLS.lenta.startsWith('https://'))) {
+    window.open(URLS.lenta, '_blank');
+  } else {
+    const msg = isBoss(user)
+      ? 'Адрес ленты не задан. Укажите его на вкладке «Босс» → «Адрес ленты».'
+      : 'Адрес ленты пока не задан — попросите босса указать его.';
+    document.getElementById('save-hint').textContent = '⚠ ' + msg;
+  }
 }
 
 // ---------- ПРИВИЛЕГИИ ГЕНБОССА: УПРАВЛЕНИЕ СОТРУДНИКАМИ ----------
@@ -650,7 +767,6 @@ function renderDoneBox(){
     list = DATA.tasks.filter(t => isDone(t.id) && !isCanceled(t.id))
       .map(t => `<div class="done-item">✔ ${t.title} — ${nameOf(t.worker)} (рейтинг ${t.rating}/5, до ${t.to})</div>`);
   } else {
-    // Работник видит только СВОЮ выполненную работу
     list = DATA.tasks.filter(t => t.worker === user.login && isDone(t.id) && !isCanceled(t.id))
       .map(t => `<div class="done-item">✔ ${t.title} (рейтинг ${t.rating}/5, до ${t.to})</div>`);
   }
@@ -673,10 +789,47 @@ function sendMsg(){
   renderChat(); markDirty();
 }
 
-// ---------- ССЫЛКИ ----------
+// ---------- ССЫЛКИ: босс и генбосс ----------
+async function addLink(){
+  if (!isBoss(user)) return;
+  const name = document.getElementById('f-link-name').value.trim();
+  const url  = document.getElementById('f-link-url').value.trim();
+  if (!name || !url) {
+    document.getElementById('save-hint').textContent = '⚠ Укажите название и адрес ссылки';
+    return;
+  }
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    document.getElementById('save-hint').textContent = '⚠ Адрес должен начинаться с http:// или https://';
+    return;
+  }
+  if (!DATA.links) DATA.links = [];
+  DATA.links.push({ name, url });
+  document.getElementById('f-link-name').value = '';
+  document.getElementById('f-link-url').value = '';
+  const ok = await saveData();
+  document.getElementById('save-hint').textContent = ok ? 'Ссылка добавлена ✔' : 'Ошибка сохранения';
+  renderAll();
+}
+
+async function deleteLink(i){
+  if (!isBoss(user)) return;
+  const l = (DATA.links || [])[i];
+  if (!l) return;
+  if (!confirm(`Удалить ссылку «${l.name}»?`)) return;
+  DATA.links.splice(i, 1);
+  const ok = await saveData();
+  document.getElementById('save-hint').textContent = ok ? 'Ссылка удалена ✔' : 'Ошибка сохранения';
+  renderAll();
+}
+
 function renderLinks(){
   document.getElementById('links-list').innerHTML =
-    (DATA.links || []).map(l => `<div class="link-item"><a href="${l.url}" target="_blank">${l.name}</a></div>`).join('');
+    (DATA.links || []).map((l, i) => `
+      <div class="link-item">
+        <a href="${l.url}" target="_blank" rel="noopener">${l.name}</a>
+        ${isBoss(user) ? ` <span class="status-not" style="cursor:pointer;float:right" onclick="deleteLink(${i})">✕</span>` : ''}
+      </div>`).join('')
+    || '<div class="link-item" style="color:#999">Ссылок пока нет</div>';
 }
 
 // ---------- СЧЁТЧИК ДО ПРАЗДНИКА ----------
@@ -713,11 +866,11 @@ function makeFlake(){
   return {
     x: Math.random() * snowCv.width,
     y: Math.random() * -snowCv.height,
-    r: 0.7 + Math.random() * 2.8,            // размер снежинки
-    sp: 0.4 + Math.random() * 1.4,           // скорость падения
-    sw: Math.random() * Math.PI * 2,         // фаза покачивания
-    sway: 0.3 + Math.random() * 0.9,         // амплитуда покачивания
-    op: 0.35 + Math.random() * 0.6           // прозрачность — ближние ярче
+    r: 0.7 + Math.random() * 2.8,
+    sp: 0.4 + Math.random() * 1.4,
+    sw: Math.random() * Math.PI * 2,
+    sway: 0.3 + Math.random() * 0.9,
+    op: 0.35 + Math.random() * 0.6
   };
 }
 
@@ -726,11 +879,11 @@ for (let i = 0; i < 150; i++) flakes.push(makeFlake());
 function drawSnow(){
   if (snowOn) {
     snowCtx.clearRect(0, 0, snowCv.width, snowCv.height);
-    const wind = Math.sin(Date.now() / 4000) * 0.35;   // порывы ветра
+    const wind = Math.sin(Date.now() / 4000) * 0.35;
     for (const f of flakes) {
       f.y += f.sp;
       f.sw += f.sway / 30;
-      f.x += Math.sin(f.sw) * 0.5 + wind * f.r * 0.4;  // крупные сносит сильнее
+      f.x += Math.sin(f.sw) * 0.5 + wind * f.r * 0.4;
       if (f.y > snowCv.height + 5) { Object.assign(f, makeFlake(), { y: -5 }); }
       if (f.x > snowCv.width + 10) f.x = -10;
       if (f.x < -10) f.x = snowCv.width + 10;
@@ -754,16 +907,16 @@ function toggleSnow(){
   localStorage.setItem('snow', snowOn ? 'on' : 'off');
   document.getElementById('snow-btn').textContent = snowOn ? '❄ Снег: вкл' : '❄ Снег: выкл';
 }
-// восстановить подпись кнопки после перезагрузки
 if (!snowOn) document.getElementById('snow-btn').textContent = '❄ Снег: выкл';
 
 // ---------- ОБЩИЙ РЕНДЕР И ОБНОВЛЕНИЕ ----------
 function renderAll(){
   renderList(); renderChat(); renderLinks(); renderBusy(); renderDoneBox();
-  if (isBoss(user)) renderBoss();
+  if (isBoss(user)) { renderBoss(); renderHolidays(); }
 }
 
 async function refreshAll(){
+  if (savingNow || pendingSave) return;
   try {
     STATE = await diskRead(DISK_STATE) || { statuses:{}, busyDays:{}, chat:[] };
     renderAll();
@@ -775,14 +928,14 @@ async function refreshAll(){
   try {
     DATA = await diskRead(DISK_DATA);
     if (!DATA) { alert('Не найден раздел data в jsonbox — выполните один раз команду создания данных из консоли (F12)'); return; }
-    URLS = DATA.urls || {};   // лента, почта отзывов, второй сайт — для кнопок внизу
+    URLS = DATA.urls || {};
     STATE = await diskRead(DISK_STATE) || { statuses:{}, busyDays:{}, chat:[] };
 
     const saved = localStorage.getItem('session');
     const acc = saved && (DATA.accounts || []).find(a => a.login === saved);
     if (acc) { user = acc; enterApp(); }
     setInterval(tick, 1000);
-    setInterval(refreshAll, 8000); // подтягиваем чужие изменения
+    setInterval(refreshAll, 8000);
   } catch(e){
     console.error(e);
     alert('Не удалось подключиться к jsonbox. Проверьте ключи и консоль браузера (F12).');
