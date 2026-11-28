@@ -116,6 +116,9 @@
     border:1px solid #e0d5c0; }
   .staff-card h4 { margin-bottom:6px; color:#5d4037; }
   .staff-card h4::before { content:"🧑‍🎄 "; }
+  .genboss-form { border-top:4px solid #f9a825; }
+  .genboss-form h3 { color:#e65100; }
+  .genboss-form h3::before { content:"👑 "; }
 
   /* ==== ВЫПОЛНЕННАЯ РАБОТА ==== */
   .done-box { margin-top:16px; border-radius:12px; padding:16px;
@@ -223,7 +226,7 @@
     <div id="links-list"></div>
   </div>
 
-  <!-- ВКЛАДКА 4: БОСС (видна только боссу) -->
+  <!-- ВКЛАДКА 4: БОСС (видна боссу и генбоссу) -->
   <div class="page" id="page-boss">
     <div class="boss-form">
       <h3 id="boss-form-title">Добавить задание</h3>
@@ -252,14 +255,27 @@
       <h3>Сотрудники: статусы и дни занятости</h3>
       <div id="boss-staff"></div>
     </div>
+
+    <div class="boss-form">
+      <h3>Чат</h3>
+      <button class="btn btn-red" onclick="clearChat()">🗑 Очистить чат</button>
+      <div class="meta">Удалит все сообщения у всех сотрудников — восстановить нельзя.</div>
+    </div>
+
+    <!-- УПРАВЛЕНИЕ СОТРУДНИКАМИ: только генбосс -->
+    <div class="boss-form genboss-form" id="genboss-panel" style="display:none;">
+      <h3>Управление сотрудниками (только генбосс)</h3>
+      <div class="meta">Здесь можно назначать и снимать боссов, менять пароли и удалять работников.</div>
+      <div id="genboss-accounts"></div>
+    </div>
   </div>
 </div>
 
 <script>
  // ===== НАСТРОЙКИ JSONBOX — ВСТАВЬТЕ СВОИ КЛЮЧИ =====
 const JB_URL   = "https://jsonbox.ru/api.php";
-const JB_KEY   = "8aac11526371e8bbfca305ca8a3dd962";
-const JB_KEYRO = "ro_12170a6925b57cd83217c9ea34a0ee26";
+const JB_KEY   = "";
+const JB_KEYRO = "";
 
 const DISK_DATA  = "data";    // ключ-раздел в jsonbox: аккаунты, задания, праздники, ссылки
 const DISK_STATE = "state";   // ключ-раздел в jsonbox: статусы, занятость, чат
@@ -275,6 +291,11 @@ let saveTimer = null;
 let URLS = {};      // urls из DATA: лента, почта отзывов, второй сайт
 
 const PRIOS = ["Не важно","Чуть важнее","Важнее","Очень важно","Обязательно"];
+
+// ---------- РОЛИ ----------
+// Оба босса имеют полный доступ к панели босса; genboss дополнительно управляет сотрудниками
+const isBoss    = u => u && (u.role === 'boss' || u.role === 'genboss');
+const isGenBoss = u => u && u.role === 'genboss';
 
 // ---------- JSONBOX: ЧТЕНИЕ И ЗАПИСЬ ----------
 async function jbGet(key){
@@ -336,7 +357,8 @@ function enterApp(){
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   document.getElementById('account').textContent = user.name + ' · выйти';
-  document.getElementById('tab-boss').style.display = user.role === 'boss' ? 'block' : 'none';
+  document.getElementById('tab-boss').style.display = isBoss(user) ? 'block' : 'none';
+  document.getElementById('genboss-panel').style.display = isGenBoss(user) ? 'block' : 'none';
   fillWorkerSelect();
   renderAll();
 }
@@ -351,7 +373,7 @@ document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
 
 // ---------- ЗАДАНИЯ: ВИД СОТРУДНИКА ----------
 function myTasks(){
-  if (user.role === 'boss') return DATA.tasks;
+  if (isBoss(user)) return DATA.tasks;
   return DATA.tasks.filter(t => t.worker === user.login && !isCanceled(t.id));
 }
 function statusOf(id){ return (STATE && STATE.statuses && STATE.statuses[id]) || {done:false, canceled:false}; }
@@ -367,7 +389,7 @@ function renderList(){
   visible.forEach(t => {
     const row = document.createElement('div');
     row.className = 'task-row';
-    const who = user.role === 'boss' ? ' <small style="color:#888">(' + nameOf(t.worker) + ')</small>' : '';
+    const who = isBoss(user) ? ' <small style="color:#888">(' + nameOf(t.worker) + ')</small>' : '';
     row.innerHTML = `<span>${t.title}${who}</span>
       <span class="${isDone(t.id) ? 'status-done' : 'status-not'}">${isDone(t.id) ? 'Готово' : 'Не готово'}</span>`;
     row.onclick = () => openTask(t.id);
@@ -459,6 +481,15 @@ function renderBusy(){
     || '<div class="busy-item" style="color:#999">Пока ничего не указано</div>';
 }
 
+// ---------- ОЧИСТКА ЧАТА (босс и генбосс) ----------
+async function clearChat(){
+  if (!confirm('Вы уверены, что хотите удалить ВСЕ сообщения чата? Это нельзя отменить.')) return;
+  STATE.chat = [];
+  const ok = await diskWrite(DISK_STATE, STATE);
+  document.getElementById('save-hint').textContent = ok ? 'Чат очищен ✔' : 'Ошибка сохранения';
+  renderAll();
+}
+
 // ---------- ПАНЕЛЬ БОССА ----------
 function fillWorkerSelect(){
   const sel = document.getElementById('f-worker');
@@ -540,13 +571,59 @@ function renderBoss(){
       <div class="meta">Задания: ${mine.map(t => t.title + ' — ' + (isCanceled(t.id) ? 'отменено' : (isDone(t.id) ? 'готово' : 'не готово'))).join('; ') || 'нет'}</div>
     </div>`;
   }).join('');
+
+  if (isGenBoss(user)) renderGenBossAccounts();
+}
+
+// ---------- ПРИВИЛЕГИИ ГЕНБОССА: УПРАВЛЕНИЕ СОТРУДНИКАМИ ----------
+function renderGenBossAccounts(){
+  const box = document.getElementById('genboss-accounts');
+  box.innerHTML = (DATA.accounts || []).map(a => `
+    <div class="staff-card">
+      <h4>${a.name}${a.role === 'genboss' ? ' 👑' : (a.role === 'boss' ? ' ⭐' : '')} <small style="color:#888">(${a.login})</small></h4>
+      <div class="meta">Роль: <b>${a.role}</b> · Email: ${a.email || '—'}</div>
+      <button class="btn btn-blue" onclick="setRole('${a.login}','${a.role === 'genboss' ? 'boss' : 'genboss'}')">${a.role === 'genboss' ? 'Снять генбосса' : 'Сделать генбоссом'}</button>
+      <button class="btn btn-gray" onclick="setRole('${a.login}','${a.role === 'worker' ? 'boss' : 'worker'}')">${a.role === 'worker' ? 'Сделать боссом' : 'Сделать работником'}</button>
+      <button class="btn btn-gray" onclick="changePass('${a.login}')">🔑 Сменить пароль</button>
+      ${a.login !== user.login ? `<button class="btn btn-red" onclick="deleteAccount('${a.login}')">✕ Удалить сотрудника</button>` : ''}
+    </div>`).join('');
+}
+
+async function setRole(login, role){
+  const a = DATA.accounts.find(x => x.login === login);
+  if (!a) return;
+  if (!confirm(`Сделать «${a.name}» роль «${role}»?`)) return;
+  a.role = role;
+  const ok = await saveData();
+  document.getElementById('save-hint').textContent = ok ? 'Роль изменена ✔' : 'Ошибка сохранения';
+  fillWorkerSelect(); renderAll();
+}
+
+async function changePass(login){
+  const pw = prompt('Новый пароль для ' + nameOf(login) + ':');
+  if (!pw) return;
+  const a = DATA.accounts.find(x => x.login === login);
+  a.passwordHash = await hashPassword(pw);
+  const ok = await saveData();
+  document.getElementById('save-hint').textContent = ok ? 'Пароль изменён ✔' : 'Ошибка сохранения';
+}
+
+async function deleteAccount(login){
+  const tasks = DATA.tasks.filter(t => t.worker === login && !isCanceled(t.id)).length;
+  let msg = `Удалить сотрудника «${nameOf(login)}»? Войти под этим логином больше будет нельзя.`;
+  if (tasks) msg += `\n\nВнимание: у него ${tasks} активных задани${tasks === 1 ? 'е' : 'я'} — они останутся в списке, но будут висеть без исполнителя.`;
+  if (!confirm(msg)) return;
+  DATA.accounts = DATA.accounts.filter(a => a.login !== login);
+  const ok = await saveData();
+  document.getElementById('save-hint').textContent = ok ? 'Сотрудник удалён ✔' : 'Ошибка сохранения';
+  fillWorkerSelect(); renderAll();
 }
 
 // ---------- ВЫПОЛНЕННАЯ РАБОТА ВНИЗУ ----------
 function renderDoneBox(){
   const box = document.getElementById('done-list');
   let list;
-  if (user.role === 'boss') {
+  if (isBoss(user)) {
     list = DATA.tasks.filter(t => isDone(t.id) && !isCanceled(t.id))
       .map(t => `<div class="done-item">✔ ${t.title} — ${nameOf(t.worker)} (рейтинг ${t.rating}/5, до ${t.to})</div>`);
   } else {
@@ -659,7 +736,7 @@ if (!snowOn) document.getElementById('snow-btn').textContent = '❄ Снег: в
 // ---------- ОБЩИЙ РЕНДЕР И ОБНОВЛЕНИЕ ----------
 function renderAll(){
   renderList(); renderChat(); renderLinks(); renderBusy(); renderDoneBox();
-  if (user.role === 'boss') renderBoss();
+  if (isBoss(user)) renderBoss();
 }
 
 async function refreshAll(){
