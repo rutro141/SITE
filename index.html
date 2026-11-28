@@ -46,6 +46,8 @@
   .tab:nth-child(1)::after { content:" 🎁"; }
   .tab:nth-child(2)::after { content:" ❄"; }
   .tab:nth-child(3)::after { content:" ⭐"; }
+  .tab-badge { display:inline-block; min-width:20px; padding:1px 6px; margin-left:4px;
+    background:#d32f2f; color:#fff; border-radius:10px; font-size:12px; }
 
   .page { display:none; padding:16px; max-width:700px; margin:0 auto; position:relative; z-index:2; }
   .page.active { display:block; }
@@ -76,8 +78,20 @@
     border:2px solid #90caf9; display:none; }
   .busy-item { display:flex; justify-content:space-between; padding:6px 0; }
 
+  /* ==== ЧАТЫ: общий + личные ==== */
+  .chat-layout { display:flex; gap:12px; }
+  .chat-side { width:200px; background:#fff; border-radius:12px; box-shadow:0 4px 14px rgba(0,0,0,.3);
+    border:2px solid #ffd54f; padding:8px; flex-shrink:0; }
+  .chat-side h4 { font-size:13px; color:#888; margin:6px 4px; }
+  .chat-side-item { padding:10px; border-radius:8px; cursor:pointer; display:flex; justify-content:space-between; align-items:center;
+    font-size:14px; transition:background .2s; }
+  .chat-side-item:hover { background:#fff8e1; }
+  .chat-side-item.active { background:#ffe8cc; font-weight:bold; }
+  .badge { display:inline-block; min-width:20px; text-align:center; padding:1px 6px;
+    background:#d32f2f; color:#fff; border-radius:10px; font-size:12px; }
   .chat-box { background:#fff; border-radius:12px; box-shadow:0 4px 14px rgba(0,0,0,.3);
-    border:2px solid #ffd54f; display:flex; flex-direction:column; height:60vh; }
+    border:2px solid #ffd54f; display:flex; flex-direction:column; height:60vh; flex:1; min-width:0; }
+  .chat-title { padding:10px 14px; font-weight:bold; color:#b71c1c; border-bottom:2px solid #ffd54f; background:#fffdf5; }
   .chat-msgs { flex:1; overflow-y:auto; padding:14px;
     background: linear-gradient(180deg,#eaf2ff,#f7fbff); }
   .msg { max-width:70%; padding:8px 12px; border-radius:14px; margin-bottom:8px; font-size:14px; }
@@ -86,6 +100,7 @@
   .chat-input { display:flex; border-top:2px solid #ffd54f; background:#fff; }
   .chat-input input { flex:1; border:none; padding:12px; font-size:14px; outline:none; }
   .chat-input button { border:none; background:linear-gradient(180deg,#d32f2f,#9a1717); color:#fff; padding:0 20px; cursor:pointer; font-size:18px; }
+  @media (max-width:560px){ .chat-side{ width:130px; } }
 
   .link-item { background:#fff; border-radius:12px; padding:14px 16px; margin-bottom:10px; box-shadow:0 4px 14px rgba(0,0,0,.3);
     border-left:5px solid #2e7d32; transition:transform .15s; }
@@ -155,7 +170,7 @@
 
   <div class="tabs" id="tabs">
     <div class="tab active" data-page="page-tasks">Задания</div>
-    <div class="tab" data-page="page-chats">Чаты</div>
+    <div class="tab" data-page="page-chats">Чаты <span id="tab-badge" class="tab-badge" style="display:none">0</span></div>
     <div class="tab" data-page="page-links">Ссылки</div>
     <div class="tab" data-page="page-boss" id="tab-boss" style="display:none;">Босс</div>
   </div>
@@ -210,20 +225,30 @@
     </div>
   </div>
 
-  <!-- ВКЛАДКА 2: ЧАТЫ -->
+  <!-- ВКЛАДКА 2: ЧАТЫ (общий + личные) -->
   <div class="page" id="page-chats">
-    <div class="chat-box">
-      <div class="chat-msgs" id="chat-msgs"></div>
-      <div class="chat-input">
-        <input type="text" id="chat-text" placeholder="Сообщение..." onkeydown="if(event.key==='Enter')sendMsg()">
-        <button onclick="sendMsg()">➤</button>
+    <div class="chat-layout">
+      <div class="chat-side">
+        <h4>Список чатов</h4>
+        <div class="chat-side-item active" id="side-general" onclick="openChatView('__general__')">
+          <span>Общий чат</span><span id="badge-general"></span>
+        </div>
+        <h4>Личные чаты</h4>
+        <div id="dm-list"></div>
+      </div>
+      <div class="chat-box">
+        <div class="chat-title" id="chat-title">Общий чат</div>
+        <div class="chat-msgs" id="chat-msgs"></div>
+        <div class="chat-input">
+          <input type="text" id="chat-text" placeholder="Сообщение..." onkeydown="if(event.key==='Enter')sendMsg()">
+          <button onclick="sendMsg()">➤</button>
+        </div>
       </div>
     </div>
   </div>
 
   <!-- ВКЛАДКА 3: ССЫЛКИ -->
   <div class="page" id="page-links">
-    <!-- Форма добавления ссылок: видна только боссу и генбоссу -->
     <div class="boss-form" id="links-form" style="display:none;">
       <h3>Добавить ссылку</h3>
       <input id="f-link-name" placeholder="Название ссылки (например: Лента новостей)">
@@ -265,7 +290,6 @@
       <div id="boss-staff"></div>
     </div>
 
-    <!-- ПРАЗДНИКИ: босс и генбосс -->
     <div class="boss-form">
       <h3>Праздники</h3>
       <input id="f-hol-name" placeholder="Название праздника (например: Новый год)">
@@ -274,7 +298,6 @@
       <div id="holidays-list" style="margin-top:8px;"></div>
     </div>
 
-    <!-- НАСТРОЙКА ЛЕНТЫ: босс и генбосс -->
     <div class="boss-form">
       <h3>Адрес ленты</h3>
       <input id="f-lenta" placeholder="https://... — куда ведёт кнопка «Открыть ленту»">
@@ -284,11 +307,10 @@
 
     <div class="boss-form">
       <h3>Чат</h3>
-      <button class="btn btn-red" onclick="clearChat()">🗑 Очистить чат</button>
-      <div class="meta">Удалит все сообщения у всех сотрудников — восстановить нельзя.</div>
+      <button class="btn btn-red" onclick="clearChat()">🗑 Очистить общий чат</button>
+      <div class="meta">Удалит все сообщения ОБЩЕГО чата у всех сотрудников. Личные переписки не затрагиваются.</div>
     </div>
 
-    <!-- УПРАВЛЕНИЕ СОТРУДНИКАМИ: только генбосс -->
     <div class="boss-form genboss-form" id="genboss-panel" style="display:none;">
       <h3>Управление сотрудниками (только генбосс)</h3>
       <div class="meta">Здесь можно назначать и снимать боссов и удалять работников.</div>
@@ -303,24 +325,26 @@ const JB_URL   = "https://jsonbox.ru/api.php";
 const JB_KEY   = "8aac11526371e8bbfca305ca8a3dd962";
 const JB_KEYRO = "ro_12170a6925b57cd83217c9ea34a0ee26";
 
-const DISK_DATA  = "data";    // ключ-раздел в jsonbox: аккаунты, задания, праздники, ссылки
-const DISK_STATE = "state";   // ключ-раздел в jsonbox: статусы, занятость, чат
-
-const PRIORITIES = ["Не важно","Чуть важнее","Важнее","Очень важно","Обязательно"];
+const DISK_DATA  = "data";
+const DISK_STATE = "state";
 
 // ---------- ГЛОБАЛЬНЫЕ ДАННЫЕ ----------
-let DATA  = null;   // содержимое data.json
-let STATE = null;   // содержимое state.json
-let user  = null;   // кто вошёл
+let DATA  = null;
+let STATE = null;
+let user  = null;
 let editingTaskId = null;
 let saveTimer = null;
-let URLS = {};      // urls из DATA: лента, почта отзывов, второй сайт
+let URLS = {};
 
-// защита от гонок при сохранении/обновлении
-let savingNow = false;     // прямо сейчас идёт запись на сервер
-let pendingSave = false;   // есть несохранённые локальные правки
+let savingNow = false;
+let pendingSave = false;
 
-const PRIOS = ["Не важно","Чуть важнее","Важнее","Очень важно","Обязательно"];
+// чаты
+let currentChat = '__general__';   // '__general__' или логин собеседника
+let lastUnreadTotal = 0;           // для звукового уведомления
+let firstUnreadCheck = true;       // при первом рендере не пищим
+let beepCtx = null;
+const BASE_TITLE = document.title;
 
 // ---------- РОЛИ ----------
 const isBoss    = u => u && (u.role === 'boss' || u.role === 'genboss');
@@ -389,6 +413,8 @@ function enterApp(){
   document.getElementById('tab-boss').style.display = isBoss(user) ? 'block' : 'none';
   document.getElementById('genboss-panel').style.display = isGenBoss(user) ? 'block' : 'none';
   document.getElementById('links-form').style.display = isBoss(user) ? 'block' : 'none';
+  ensureRead();
+  currentChat = '__general__';
   fillWorkerSelect();
   renderAll();
 }
@@ -401,7 +427,7 @@ document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
   document.getElementById(t.dataset.page).classList.add('active');
 });
 
-// ---------- ЗАДАНИЯ: ВИД СОТРУДНИКА ----------
+// ---------- ЗАДАНИЯ ----------
 function myTasks(){
   if (isBoss(user)) return DATA.tasks;
   return DATA.tasks.filter(t => t.worker === user.login && !isCanceled(t.id));
@@ -550,13 +576,141 @@ function renderBusy(){
     || '<div class="busy-item" style="color:#999">Пока ничего не указано</div>';
 }
 
-// ---------- ОЧИСТКА ЧАТА (босс и генбосс) ----------
+// ================================================================
+//  ЧАТЫ: ОБЩИЙ + ЛИЧНЫЕ + УВЕДОМЛЕНИЯ
+// ================================================================
+const GENERAL = '__general__';
+function chatKey(a, b){ return [a, b].sort().join('|'); }
+
+function ensureRead(){
+  if (!STATE.read) STATE.read = {};
+  if (!STATE.read[user.login]) STATE.read[user.login] = { general: 0, dm: {} };
+}
+
+function unreadGeneral(){
+  ensureRead();
+  return Math.max(0, ((STATE && STATE.chat) || []).length - STATE.read[user.login].general);
+}
+function unreadDm(peer){
+  ensureRead();
+  const arr = (STATE && STATE.dm && STATE.dm[chatKey(user.login, peer)]) || [];
+  return Math.max(0, arr.length - (STATE.read[user.login].dm[peer] || 0));
+}
+function totalUnread(){
+  let t = unreadGeneral();
+  (DATA.accounts || []).forEach(a => { if (a.login !== user.login) t += unreadDm(a.login); });
+  return t;
+}
+
+// отметить просмотренный чат прочитанным
+function markRead(){
+  ensureRead();
+  if (currentChat === GENERAL) {
+    STATE.read[user.login].general = ((STATE && STATE.chat) || []).length;
+  } else {
+    const key = chatKey(user.login, currentChat);
+    STATE.read[user.login].dm[currentChat] = ((STATE && STATE.dm && STATE.dm[key]) || []).length;
+  }
+  markDirty();
+}
+
+// звук уведомления (короткий «дзынь» без внешних файлов)
+function playBeep(){
+  try {
+    if (!beepCtx) beepCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = beepCtx.createOscillator();
+    const g = beepCtx.createGain();
+    o.connect(g); g.connect(beepCtx.destination);
+    o.type = 'sine'; o.frequency.value = 880;
+    g.gain.value = 0.06;
+    o.start();
+    o.stop(beepCtx.currentTime + 0.18);
+  } catch(e){}
+}
+
+// переключение на чат
+function openChatView(chat){
+  currentChat = chat;
+  renderChatSidebar();
+  renderChat();
+}
+
+function renderChatSidebar(){
+  if (!user) return;
+  const gen = document.getElementById('side-general');
+  gen.classList.toggle('active', currentChat === GENERAL);
+  const bg = unreadGeneral();
+  document.getElementById('badge-general').innerHTML = bg ? `<span class="badge">${bg}</span>` : '';
+
+  const box = document.getElementById('dm-list');
+  box.innerHTML = (DATA.accounts || []).filter(a => a.login !== user.login).map(a => {
+    const mark = a.role === 'genboss' ? ' 👑' : (a.role === 'boss' ? ' ⭐' : '');
+    const u = unreadDm(a.login);
+    return `<div class="chat-side-item ${currentChat === a.login ? 'active' : ''}" onclick="openChatView('${a.login}')">
+      <span>${a.name}${mark}</span>${u ? `<span class="badge">${u}</span>` : ''}
+    </div>`;
+  }).join('') || '<div class="meta" style="padding:6px">Пока только вы</div>';
+
+  // общий значок на вкладке «Чаты» и в заголовке браузера
+  const total = totalUnread();
+  const tabBadge = document.getElementById('tab-badge');
+  tabBadge.style.display = total ? 'inline-block' : 'none';
+  tabBadge.textContent = total;
+  document.title = total ? `(${total}) ${BASE_TITLE}` : BASE_TITLE;
+}
+
+function currentChatMessages(){
+  if (currentChat === GENERAL) return (STATE && STATE.chat) || [];
+  const key = chatKey(user.login, currentChat);
+  return (STATE && STATE.dm && STATE.dm[key]) || [];
+}
+
+function renderChat(){
+  if (!user) return;
+  const box = document.getElementById('chat-msgs');
+  const title = document.getElementById('chat-title');
+  if (currentChat === GENERAL) {
+    title.textContent = 'Общий чат';
+  } else {
+    const a = (DATA.accounts || []).find(x => x.login === currentChat);
+    const mark = a && a.role === 'genboss' ? ' 👑' : (a && a.role === 'boss' ? ' ⭐' : '');
+    title.textContent = 'Личный чат: ' + (a ? a.name : currentChat) + mark;
+  }
+  const msgs = currentChatMessages();
+  box.innerHTML = msgs.map(m =>
+    `<div class="msg ${m.who === user.login ? 'me' : 'other'}"><b>${m.name}:</b> ${m.text}</div>`).join('');
+  box.scrollTop = box.scrollHeight;
+  markRead(); // открытый чат считается прочитанным
+}
+
+function sendMsg(){
+  const inp = document.getElementById('chat-text');
+  if (!inp.value.trim()) return;
+  const text = inp.value.trim();
+  if (!STATE.dm) STATE.dm = {};
+  if (currentChat === GENERAL) {
+    if (!STATE.chat) STATE.chat = [];
+    STATE.chat.push({ who: user.login, name: user.name, text });
+  } else {
+    const key = chatKey(user.login, currentChat);
+    if (!STATE.dm[key]) STATE.dm[key] = [];
+    STATE.dm[key].push({ who: user.login, name: user.name, text });
+    markRead(); // своё сообщение — сразу прочитано
+  }
+  inp.value = '';
+  renderChat(); renderChatSidebar();
+  saveState();
+}
+
+// ---------- ОЧИСТКА ОБЩЕГО ЧАТА (босс и генбосс) ----------
 async function clearChat(){
   if (!isBoss(user)) return;
-  if (!confirm('Вы уверены, что хотите удалить ВСЕ сообщения чата? Это нельзя отменить.')) return;
+  if (!confirm('Вы уверены, что хотите удалить ВСЕ сообщения ОБЩЕГО чата? Личные переписки не пострадают.')) return;
   STATE.chat = [];
+  ensureRead();
+  STATE.read[user.login].general = 0;
   const ok = await diskWrite(DISK_STATE, STATE);
-  document.getElementById('save-hint').textContent = ok ? 'Чат очищен ✔' : 'Ошибка сохранения';
+  document.getElementById('save-hint').textContent = ok ? 'Общий чат очищен ✔' : 'Ошибка сохранения';
   renderAll();
 }
 
@@ -655,7 +809,7 @@ function renderBoss(){
   if (isGenBoss(user)) renderGenBossAccounts();
 }
 
-// ---------- ПРАЗДНИКИ: босс и генбосс ----------
+// ---------- ПРАЗДНИКИ ----------
 async function addHoliday(){
   if (!isBoss(user)) return;
   const name = document.getElementById('f-hol-name').value.trim();
@@ -694,7 +848,7 @@ function renderHolidays(){
     </div>`).join('') || '<div class="busy-item" style="color:#999">Праздников пока нет</div>';
 }
 
-// ---------- АДРЕС ЛЕНТЫ: босс и генбосс ----------
+// ---------- АДРЕС ЛЕНТЫ ----------
 async function saveLenta(){
   if (!isBoss(user)) return;
   const url = document.getElementById('f-lenta').value.trim();
@@ -711,7 +865,6 @@ async function saveLenta(){
   renderBoss();
 }
 
-// Кнопка «Открыть ленту»: работает только если адрес задан
 function openLenta(){
   if (URLS.lenta && (URLS.lenta.startsWith('http://') || URLS.lenta.startsWith('https://'))) {
     window.open(URLS.lenta, '_blank');
@@ -723,7 +876,7 @@ function openLenta(){
   }
 }
 
-// ---------- ПРИВИЛЕГИИ ГЕНБОССА: УПРАВЛЕНИЕ СОТРУДНИКАМИ ----------
+// ---------- ПРИВИЛЕГИИ ГЕНБОССА ----------
 function renderGenBossAccounts(){
   const box = document.getElementById('genboss-accounts');
   box.innerHTML = (DATA.accounts || []).map(a => `
@@ -754,12 +907,13 @@ async function deleteAccount(login){
   if (tasks) msg += `\n\nВнимание: у него ${tasks} активных задани${tasks === 1 ? 'е' : 'я'} — они останутся в списке, но будут висеть без исполнителя.`;
   if (!confirm(msg)) return;
   DATA.accounts = DATA.accounts.filter(a => a.login !== login);
+  if (STATE && STATE.read && STATE.read[login]) delete STATE.read[login];
   const ok = await saveData();
   document.getElementById('save-hint').textContent = ok ? 'Сотрудник удалён ✔' : 'Ошибка сохранения';
   fillWorkerSelect(); renderAll();
 }
 
-// ---------- ВЫПОЛНЕННАЯ РАБОТА ВНИЗУ ----------
+// ---------- ВЫПОЛНЕННАЯ РАБОТА ----------
 function renderDoneBox(){
   const box = document.getElementById('done-list');
   let list;
@@ -773,23 +927,7 @@ function renderDoneBox(){
   box.innerHTML = list.join('') || '<div class="done-item">Пока ничего не выполнено</div>';
 }
 
-// ---------- ЧАТ ----------
-function renderChat(){
-  const box = document.getElementById('chat-msgs');
-  box.innerHTML = ((STATE && STATE.chat) || []).map(m =>
-    `<div class="msg ${m.who === user.login ? 'me' : 'other'}"><b>${m.name}:</b> ${m.text}</div>`).join('');
-  box.scrollTop = box.scrollHeight;
-}
-function sendMsg(){
-  const inp = document.getElementById('chat-text');
-  if (!inp.value.trim()) return;
-  if (!STATE.chat) STATE.chat = [];
-  STATE.chat.push({ who: user.login, name: user.name, text: inp.value });
-  inp.value = '';
-  renderChat(); markDirty();
-}
-
-// ---------- ССЫЛКИ: босс и генбосс ----------
+// ---------- ССЫЛКИ ----------
 async function addLink(){
   if (!isBoss(user)) return;
   const name = document.getElementById('f-link-name').value.trim();
@@ -849,7 +987,7 @@ function tick(){
   document.getElementById('countdown').textContent = `${d} дн. ${hh} ч. ${mm} мин. ${ss} сек.`;
 }
 
-// ---------- СНЕГ: НАСТОЯЩИЙ, НА CANVAS ----------
+// ---------- СНЕГ ----------
 const snowCv  = document.getElementById('snow-canvas');
 const snowCtx = snowCv.getContext('2d');
 let snowOn = localStorage.getItem('snow') !== 'off';
@@ -909,16 +1047,24 @@ function toggleSnow(){
 }
 if (!snowOn) document.getElementById('snow-btn').textContent = '❄ Снег: выкл';
 
-// ---------- ОБЩИЙ РЕНДЕР И ОБНОВЛЕНИЕ ----------
+// ---------- ОБЩИЙ РЕНДЕР + УВЕДОМЛЕНИЯ ----------
 function renderAll(){
-  renderList(); renderChat(); renderLinks(); renderBusy(); renderDoneBox();
-  if (isBoss(user)) { renderBoss(); renderHolidays(); }
+  if (!user) return;
+  renderList(); renderLinks(); renderBusy(); renderDoneBox();
+  renderChatSidebar(); renderChat();
+  if (isBoss(user)) renderBoss();
+
+  // звук и значки: если непрочитанных стало больше — сигналим
+  const total = totalUnread();
+  if (!firstUnreadCheck && total > lastUnreadTotal) playBeep();
+  firstUnreadCheck = false;
+  lastUnreadTotal = total;
 }
 
 async function refreshAll(){
   if (savingNow || pendingSave) return;
   try {
-    STATE = await diskRead(DISK_STATE) || { statuses:{}, busyDays:{}, chat:[] };
+    STATE = await diskRead(DISK_STATE) || { statuses:{}, busyDays:{}, chat:[], dm:{}, read:{} };
     renderAll();
   } catch(e){ document.getElementById('save-hint').textContent = 'Ошибка соединения'; }
 }
@@ -929,7 +1075,9 @@ async function refreshAll(){
     DATA = await diskRead(DISK_DATA);
     if (!DATA) { alert('Не найден раздел data в jsonbox — выполните один раз команду создания данных из консоли (F12)'); return; }
     URLS = DATA.urls || {};
-    STATE = await diskRead(DISK_STATE) || { statuses:{}, busyDays:{}, chat:[] };
+    STATE = await diskRead(DISK_STATE) || { statuses:{}, busyDays:{}, chat:[], dm:{}, read:{} };
+    if (!STATE.dm) STATE.dm = {};
+    if (!STATE.read) STATE.read = {};
 
     const saved = localStorage.getItem('session');
     const acc = saved && (DATA.accounts || []).find(a => a.login === saved);
