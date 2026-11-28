@@ -146,7 +146,7 @@
 </head>
 <body>
 
-<!-- ===== ПАДАЮЩИЙ СНЕГ (canvas поверх всего, клики проходят насквозь) ===== -->
+<!-- ===== ПАДАЮЩИЙ СНЕГ ===== -->
 <canvas id="snow-canvas" style="position:fixed; inset:0; pointer-events:none; z-index:150;"></canvas>
 
 <!-- ===== ЭКРАН ВХОДА ===== -->
@@ -225,7 +225,7 @@
     </div>
   </div>
 
-  <!-- ВКЛАДКА 2: ЧАТЫ (общий + личные) -->
+  <!-- ВКЛАДКА 2: ЧАТЫ -->
   <div class="page" id="page-chats">
     <div class="chat-layout">
       <div class="chat-side">
@@ -260,7 +260,7 @@
     <div id="links-list"></div>
   </div>
 
-  <!-- ВКЛАДКА 4: БОСС (видна боссу и генбоссу) -->
+  <!-- ВКЛАДКА 4: БОСС -->
   <div class="page" id="page-boss">
     <div class="boss-form">
       <h3 id="boss-form-title">Добавить задание</h3>
@@ -322,8 +322,8 @@
 <script>
  // ===== НАСТРОЙКИ JSONBOX — ВСТАВЬТЕ СВОИ КЛЮЧИ =====
 const JB_URL   = "https://jsonbox.ru/api.php";
-const JB_KEY   = "8aac11526371e8bbfca305ca8a3dd962";
-const JB_KEYRO = "ro_12170a6925b57cd83217c9ea34a0ee26";
+const JB_KEY   = "";
+const JB_KEYRO = "";
 
 const DISK_DATA  = "data";
 const DISK_STATE = "state";
@@ -338,11 +338,12 @@ let URLS = {};
 
 let savingNow = false;
 let pendingSave = false;
+let dirtyStatusIds = new Set();   // какие статусы меняли локально — только их накладываем при слиянии
 
 // чаты
-let currentChat = '__general__';   // '__general__' или логин собеседника
-let lastUnreadTotal = 0;           // для звукового уведомления
-let firstUnreadCheck = true;       // при первом рендере не пищим
+let currentChat = '__general__';
+let lastUnreadTotal = 0;
+let firstUnreadCheck = true;
 let beepCtx = null;
 const BASE_TITLE = document.title;
 
@@ -373,6 +374,49 @@ async function diskWrite(file, obj){
     body: JSON.stringify({ data: doc })
   });
   return r.ok;
+}
+
+// ================================================================
+//  СЛИЯНИЕ СОСТОЯНИЙ:лечим «сами удаляются»
+//  Перед записью и перед каждым автообновлением объединяем серверную
+//  и локальную версии: сообщения — объединение без дублей, статусы,
+//  дни занятости и «прочитано» — только СВОИ изменения поверх серверных.
+//  Так чужие данные больше не затираются вашими старыми копиями.
+// ================================================================
+function msgKey(m){
+  return (m.who||'') + '|' + (m.name||'') + '|' + (m.text||'') + '|' + (m.t||'');
+}
+function mergeMsgs(a, b){
+  const seen = new Set(), out = [];
+  [...(a||[]), ...(b||[])].forEach(m => {
+    const k = msgKey(m);
+    if (seen.has(k)) return;
+    seen.add(k); out.push(m);
+  });
+  return out;
+}
+function mergeState(server, local){
+  server = server || {}; local = local || {};
+  const out = {};
+  // статусы: серверные + только локально изменённые нами
+  out.statuses = Object.assign({}, server.statuses || {});
+  (local.statuses || {}).forEach !== undefined; // no-op для читаемости
+  dirtyStatusIds.forEach(id => {
+    if (local.statuses && local.statuses[id] !== undefined) out.statuses[id] = local.statuses[id];
+  });
+  // дни занятости: серверные + только СВОЙ логин из локальных
+  out.busyDays = Object.assign({}, server.busyDays || {});
+  if (local.busyDays && local.busyDays[user && user.login]) out.busyDays[user.login] = local.busyDays[user.login];
+  // сообщения: общий чат — объединение
+  out.chat = mergeMsgs(server.chat, local.chat);
+  // личные чаты — объединение по каждому ключу
+  out.dm = {};
+  const keys = new Set([...Object.keys(server.dm || {}), ...Object.keys(local.dm || {})]);
+  keys.forEach(k => out.dm[k] = mergeMsgs(server.dm[k], local.dm[k]));
+  // «прочитано»: серверные + только СВОЙ логин из локальных
+  out.read = Object.assign({}, server.read || {});
+  if (user && local.read && local.read[user.login]) out.read[user.login] = local.read[user.login];
+  return out;
 }
 
 // ---------- ХЭШИРОВАНИЕ ПАРОЛЕЙ ----------
@@ -425,7 +469,9 @@ document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
   document.querySelectorAll('.page').forEach(x => x.classList.remove('active'));
   t.classList.add('active');
   document.getElementById(t.dataset.page).classList.add('active');
+  if (t.dataset.page === 'page-chats') markRead(); // открыли вкладку — открытый чат прочитан
 });
+function chatsTabActive(){ return document.getElementById('page-chats').classList.contains('active'); }
 
 // ---------- ЗАДАНИЯ ----------
 function myTasks(){
@@ -501,7 +547,7 @@ let openTaskId = null;
 const _openTask = openTask;
 openTask = function(id){ openTaskId = id; _openTask(id); };
 
-// ---------- СОХРАНЕНИЕ СОСТОЯНИЯ ----------
+// ---------- СОХРАНЕНИЕ СОСТОЯНИЯ (со слиянием) ----------
 function markDirty(){
   clearTimeout(saveTimer);
   document.getElementById('save-hint').textContent = 'Сохранение...';
@@ -513,8 +559,12 @@ async function saveState(){
   savingNow = true;
   clearTimeout(saveTimer);
   try {
+    // читаем свежую версию с сервера и объединяем — чужие правки не теряются
+    const server = await diskRead(DISK_STATE);
+    if (server) STATE = mergeState(server, STATE);
     const ok = await diskWrite(DISK_STATE, STATE);
     document.getElementById('save-hint').textContent = ok ? 'Сохранено ✔' : 'Ошибка сохранения — проверьте ключи';
+    dirtyStatusIds.clear();
   } catch(e){ document.getElementById('save-hint').textContent = 'Ошибка соединения'; }
   savingNow = false;
   if (pendingSave) { pendingSave = false; saveState(); }
@@ -526,6 +576,7 @@ function setStatus(taskId, patch){
   if (!STATE.statuses) STATE.statuses = {};
   const s = STATE.statuses[taskId] || { done:false, canceled:false };
   STATE.statuses[taskId] = Object.assign(s, patch);
+  dirtyStatusIds.add(taskId);
   markDirty();
 }
 
@@ -585,6 +636,7 @@ function chatKey(a, b){ return [a, b].sort().join('|'); }
 function ensureRead(){
   if (!STATE.read) STATE.read = {};
   if (!STATE.read[user.login]) STATE.read[user.login] = { general: 0, dm: {} };
+  if (!STATE.read[user.login].dm) STATE.read[user.login].dm = {};
 }
 
 function unreadGeneral(){
@@ -602,19 +654,22 @@ function totalUnread(){
   return t;
 }
 
-// отметить просмотренный чат прочитанным
+// отметить открытый чат прочитанным — ТОЛЬКО если счётчик реально изменился
 function markRead(){
+  if (!user) return;
   ensureRead();
+  const r = STATE.read[user.login];
   if (currentChat === GENERAL) {
-    STATE.read[user.login].general = ((STATE && STATE.chat) || []).length;
+    const n = ((STATE && STATE.chat) || []).length;
+    if (r.general !== n) { r.general = n; markDirty(); }
   } else {
     const key = chatKey(user.login, currentChat);
-    STATE.read[user.login].dm[currentChat] = ((STATE && STATE.dm && STATE.dm[key]) || []).length;
+    const n = ((STATE && STATE.dm && STATE.dm[key]) || []).length;
+    if ((r.dm[currentChat] || 0) !== n) { r.dm[currentChat] = n; markDirty(); }
   }
-  markDirty();
 }
 
-// звук уведомления (короткий «дзынь» без внешних файлов)
+// звук уведомления
 function playBeep(){
   try {
     if (!beepCtx) beepCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -628,11 +683,12 @@ function playBeep(){
   } catch(e){}
 }
 
-// переключение на чат
 function openChatView(chat){
   currentChat = chat;
   renderChatSidebar();
   renderChat();
+  markRead();
+  renderChatSidebar(); // обновить значки после отметки
 }
 
 function renderChatSidebar(){
@@ -651,7 +707,6 @@ function renderChatSidebar(){
     </div>`;
   }).join('') || '<div class="meta" style="padding:6px">Пока только вы</div>';
 
-  // общий значок на вкладке «Чаты» и в заголовке браузера
   const total = totalUnread();
   const tabBadge = document.getElementById('tab-badge');
   tabBadge.style.display = total ? 'inline-block' : 'none';
@@ -680,29 +735,30 @@ function renderChat(){
   box.innerHTML = msgs.map(m =>
     `<div class="msg ${m.who === user.login ? 'me' : 'other'}"><b>${m.name}:</b> ${m.text}</div>`).join('');
   box.scrollTop = box.scrollHeight;
-  markRead(); // открытый чат считается прочитанным
 }
 
 function sendMsg(){
   const inp = document.getElementById('chat-text');
   if (!inp.value.trim()) return;
   const text = inp.value.trim();
+  const msg = { who: user.login, name: user.name, text, t: Date.now() };
   if (!STATE.dm) STATE.dm = {};
   if (currentChat === GENERAL) {
     if (!STATE.chat) STATE.chat = [];
-    STATE.chat.push({ who: user.login, name: user.name, text });
+    STATE.chat.push(msg);
   } else {
     const key = chatKey(user.login, currentChat);
     if (!STATE.dm[key]) STATE.dm[key] = [];
-    STATE.dm[key].push({ who: user.login, name: user.name, text });
-    markRead(); // своё сообщение — сразу прочитано
+    STATE.dm[key].push(msg);
+    ensureRead();
+    STATE.read[user.login].dm[currentChat] = STATE.dm[key].length;
   }
   inp.value = '';
   renderChat(); renderChatSidebar();
   saveState();
 }
 
-// ---------- ОЧИСТКА ОБЩЕГО ЧАТА (босс и генбосс) ----------
+// ---------- ОЧИСТКА ОБЩЕГО ЧАТА ----------
 async function clearChat(){
   if (!isBoss(user)) return;
   if (!confirm('Вы уверены, что хотите удалить ВСЕ сообщения ОБЩЕГО чата? Личные переписки не пострадают.')) return;
@@ -767,6 +823,7 @@ function deleteBossTask(id){
   if (!confirm('Удалить задание №' + id + '?')) return;
   DATA.tasks = DATA.tasks.filter(x => x.id !== id);
   if (STATE && STATE.statuses) delete STATE.statuses[id];
+  dirtyStatusIds.delete(id);
   saveData(); saveState().then(renderAll);
 }
 
@@ -1051,10 +1108,10 @@ if (!snowOn) document.getElementById('snow-btn').textContent = '❄ Снег: в
 function renderAll(){
   if (!user) return;
   renderList(); renderLinks(); renderBusy(); renderDoneBox();
+  if (chatsTabActive()) markRead(); // читаем только если реально смотрим на чаты
   renderChatSidebar(); renderChat();
   if (isBoss(user)) renderBoss();
 
-  // звук и значки: если непрочитанных стало больше — сигналим
   const total = totalUnread();
   if (!firstUnreadCheck && total > lastUnreadTotal) playBeep();
   firstUnreadCheck = false;
@@ -1064,7 +1121,11 @@ function renderAll(){
 async function refreshAll(){
   if (savingNow || pendingSave) return;
   try {
-    STATE = await diskRead(DISK_STATE) || { statuses:{}, busyDays:{}, chat:[], dm:{}, read:{} };
+    const server = await diskRead(DISK_STATE);
+    if (server) {
+      // слияние вместо замены — локальные правки и чужие сообщения не теряются
+      STATE = mergeState(server, STATE);
+    }
     renderAll();
   } catch(e){ document.getElementById('save-hint').textContent = 'Ошибка соединения'; }
 }
