@@ -274,8 +274,8 @@
 <script>
  // ===== НАСТРОЙКИ JSONBOX — ВСТАВЬТЕ СВОИ КЛЮЧИ =====
 const JB_URL   = "https://jsonbox.ru/api.php";
-const JB_KEY   = "8aac11526371e8bbfca305ca8a3dd962";
-const JB_KEYRO = "ro_12170a6925b57cd83217c9ea34a0ee26";
+const JB_KEY   = "";
+const JB_KEYRO = "";
 
 const DISK_DATA  = "data";    // ключ-раздел в jsonbox: аккаунты, задания, праздники, ссылки
 const DISK_STATE = "state";   // ключ-раздел в jsonbox: статусы, занятость, чат
@@ -372,6 +372,7 @@ document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
 });
 
 // ---------- ЗАДАНИЯ: ВИД СОТРУДНИКА ----------
+// Работник видит ТОЛЬКО задания, назначенные лично ему
 function myTasks(){
   if (isBoss(user)) return DATA.tasks;
   return DATA.tasks.filter(t => t.worker === user.login && !isCanceled(t.id));
@@ -380,6 +381,12 @@ function statusOf(id){ return (STATE && STATE.statuses && STATE.statuses[id]) ||
 function isCanceled(id){ return statusOf(id).canceled; }
 function isDone(id){ return statusOf(id).done; }
 function nameOf(login){ const a = (DATA.accounts||[]).find(x => x.login === login); return a ? a.name : login; }
+// может ли текущий пользователь менять статус этого задания
+function canChangeStatus(taskId){
+  if (isBoss(user)) return true;
+  const t = (DATA.tasks || []).find(x => x.id === taskId);
+  return !!t && t.worker === user.login;
+}
 
 function renderList(){
   const box = document.getElementById('task-list');
@@ -399,6 +406,9 @@ function renderList(){
 
 function openTask(id){
   const t = DATA.tasks.find(x => x.id === id);
+  if (!t) return;
+  // Работник может открыть только СВОЁ задание
+  if (!isBoss(user) && t.worker !== user.login) return;
   document.getElementById('task-list').style.display = 'none';
   document.getElementById('task-detail').style.display = 'block';
   document.getElementById('d-title').textContent = t.title;
@@ -409,7 +419,14 @@ function openTask(id){
   document.getElementById('d-rating').textContent = t.rating + ' / 5';
   const cb = document.getElementById('d-done');
   cb.checked = isDone(t.id);
-  cb.onchange = e => { setStatus(t.id, { done: e.target.checked }); };
+  cb.onchange = e => {
+    if (!canChangeStatus(t.id)) {           // чужое задание — галочку не даём
+      e.target.checked = isDone(t.id);
+      document.getElementById('save-hint').textContent = 'Это не ваше задание — галочку поставить нельзя';
+      return;
+    }
+    setStatus(t.id, { done: e.target.checked });
+  };
 }
 
 function backToList(){
@@ -419,6 +436,10 @@ function backToList(){
 }
 
 function cancelTask(){
+  if (!canChangeStatus(currentId())) {      // чужое задание — «Не могу» не работает
+    document.getElementById('save-hint').textContent = 'Это не ваше задание — отменить его нельзя';
+    return;
+  }
   setStatus(currentId(), { canceled: true });
   backToList();
 }
@@ -441,7 +462,9 @@ async function saveState(){
   } catch(e){ document.getElementById('save-hint').textContent = 'Ошибка соединения'; }
 }
 
+// Единая точка изменения статусов: работник может менять только СВОИ задания
 function setStatus(taskId, patch){
+  if (!canChangeStatus(taskId)) return;
   if (!STATE) STATE = {};
   if (!STATE.statuses) STATE.statuses = {};
   const s = STATE.statuses[taskId] || { done:false, canceled:false };
@@ -483,6 +506,7 @@ function renderBusy(){
 
 // ---------- ОЧИСТКА ЧАТА (босс и генбосс) ----------
 async function clearChat(){
+  if (!isBoss(user)) return;
   if (!confirm('Вы уверены, что хотите удалить ВСЕ сообщения чата? Это нельзя отменить.')) return;
   STATE.chat = [];
   const ok = await diskWrite(DISK_STATE, STATE);
@@ -500,6 +524,7 @@ function fillWorkerSelect(){
 }
 
 function saveBossTask(){
+  if (!isBoss(user)) return;
   const title = document.getElementById('f-title').value.trim();
   const worker = document.getElementById('f-worker').value;
   if (!title || !worker) { document.getElementById('save-hint').textContent = 'Укажите название и сотрудника'; return; }
@@ -523,6 +548,7 @@ function saveBossTask(){
 }
 
 function editBossTask(id){
+  if (!isBoss(user)) return;
   const t = DATA.tasks.find(x => x.id === id);
   editingTaskId = id;
   document.getElementById('boss-form-title').textContent = 'Редактировать задание №' + id;
@@ -538,6 +564,7 @@ function editBossTask(id){
 }
 
 function deleteBossTask(id){
+  if (!isBoss(user)) return;
   if (!confirm('Удалить задание №' + id + '?')) return;
   DATA.tasks = DATA.tasks.filter(x => x.id !== id);
   if (STATE && STATE.statuses) delete STATE.statuses[id];
@@ -593,6 +620,7 @@ function renderGenBossAccounts(){
 }
 
 async function setRole(login, role){
+  if (!isGenBoss(user)) return;
   const a = DATA.accounts.find(x => x.login === login);
   if (!a) return;
   if (!confirm(`Сделать «${a.name}» роль «${role}»?`)) return;
@@ -603,6 +631,7 @@ async function setRole(login, role){
 }
 
 async function deleteAccount(login){
+  if (!isGenBoss(user)) return;
   const tasks = DATA.tasks.filter(t => t.worker === login && !isCanceled(t.id)).length;
   let msg = `Удалить сотрудника «${nameOf(login)}»? Войти под этим логином больше будет нельзя.`;
   if (tasks) msg += `\n\nВнимание: у него ${tasks} активных задани${tasks === 1 ? 'е' : 'я'} — они останутся в списке, но будут висеть без исполнителя.`;
@@ -621,6 +650,7 @@ function renderDoneBox(){
     list = DATA.tasks.filter(t => isDone(t.id) && !isCanceled(t.id))
       .map(t => `<div class="done-item">✔ ${t.title} — ${nameOf(t.worker)} (рейтинг ${t.rating}/5, до ${t.to})</div>`);
   } else {
+    // Работник видит только СВОЮ выполненную работу
     list = DATA.tasks.filter(t => t.worker === user.login && isDone(t.id) && !isCanceled(t.id))
       .map(t => `<div class="done-item">✔ ${t.title} (рейтинг ${t.rating}/5, до ${t.to})</div>`);
   }
