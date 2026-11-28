@@ -274,8 +274,8 @@
 <script>
  // ===== НАСТРОЙКИ JSONBOX — ВСТАВЬТЕ СВОИ КЛЮЧИ =====
 const JB_URL   = "https://jsonbox.ru/api.php";
-const JB_KEY   = "8aac11526371e8bbfca305ca8a3dd962";
-const JB_KEYRO = "ro_12170a6925b57cd83217c9ea34a0ee26";
+const JB_KEY   = "";
+const JB_KEYRO = "";
 
 const DISK_DATA  = "data";    // ключ-раздел в jsonbox: аккаунты, задания, праздники, ссылки
 const DISK_STATE = "state";   // ключ-раздел в jsonbox: статусы, занятость, чат
@@ -493,8 +493,10 @@ async function clearChat(){
 // ---------- ПАНЕЛЬ БОССА ----------
 function fillWorkerSelect(){
   const sel = document.getElementById('f-worker');
-  sel.innerHTML = (DATA.accounts || []).filter(a => a.role === 'worker')
-    .map(a => `<option value="${a.login}">${a.name}</option>`).join('');
+  // генбосс может давать задания и работникам, и боссам; обычный босс — только работникам
+  const pool = (DATA.accounts || []).filter(a =>
+    a.role === 'worker' || (isGenBoss(user) && a.role === 'boss'));
+  sel.innerHTML = pool.map(a => `<option value="${a.login}">${a.name}${a.role === 'boss' ? ' ⭐ (босс)' : ''}</option>`).join('');
 }
 
 function saveBossTask(){
@@ -524,6 +526,7 @@ function editBossTask(id){
   const t = DATA.tasks.find(x => x.id === id);
   editingTaskId = id;
   document.getElementById('boss-form-title').textContent = 'Редактировать задание №' + id;
+  fillWorkerSelect(); // пересобрать список — вдруг роли изменились
   document.getElementById('f-worker').value = t.worker;
   document.getElementById('f-title').value = t.title;
   document.getElementById('f-desc').value = t.desc;
@@ -559,13 +562,14 @@ function renderBoss(){
     </div>`).join('') || '<div class="boss-list-item">Заданий пока нет</div>';
 
   const staff = document.getElementById('boss-staff');
-  staff.innerHTML = (DATA.accounts || []).filter(a => a.role === 'worker').map(a => {
+  staff.innerHTML = (DATA.accounts || []).filter(a => a.role === 'worker' || a.role === 'boss').map(a => {
     const busy = (STATE && STATE.busyDays && STATE.busyDays[a.login]) || [];
     const mine = DATA.tasks.filter(t => t.worker === a.login);
     const done = mine.filter(t => isDone(t.id) && !isCanceled(t.id)).length;
     const canceled = mine.filter(t => isCanceled(t.id)).length;
+    const mark = a.role === 'genboss' ? ' 👑' : (a.role === 'boss' ? ' ⭐' : '');
     return `<div class="staff-card">
-      <h4>${a.name}</h4>
+      <h4>${a.name}${mark}</h4>
       <div class="meta">Выполнено: <b style="color:#2e7d32">${done}</b> из ${mine.length - canceled}${canceled ? ' · отменено: ' + canceled : ''}</div>
       <div class="meta">Не сможет работать: ${busy.length ? busy.join(', ') : 'все дни свободны'}</div>
       <div class="meta">Задания: ${mine.map(t => t.title + ' — ' + (isCanceled(t.id) ? 'отменено' : (isDone(t.id) ? 'готово' : 'не готово'))).join('; ') || 'нет'}</div>
