@@ -252,12 +252,6 @@
       <h3>Сотрудники: статусы и дни занятости</h3>
       <div id="boss-staff"></div>
     </div>
-
-    <div class="boss-form">
-      <h3>Чат</h3>
-      <button class="btn btn-red" onclick="clearChat()">🗑 Очистить чат</button>
-      <div class="meta">Удалит все сообщения у всех сотрудников — восстановить нельзя.</div>
-    </div>
   </div>
 </div>
 
@@ -463,15 +457,6 @@ function renderBusy(){
   document.getElementById('busy-list').innerHTML =
     arr.map(d => `<div class="busy-item"><span>${d}</span><span class="status-not" style="cursor:pointer" onclick="removeBusy('${d}')">✕</span></div>`).join('')
     || '<div class="busy-item" style="color:#999">Пока ничего не указано</div>';
-}
-
-// ---------- ОЧИСТКА ЧАТА (только босс) ----------
-async function clearChat(){
-  if (!confirm('Вы уверены, что хотите удалить ВСЕ сообщения чата? Это нельзя отменить.')) return;
-  STATE.chat = [];
-  const ok = await diskWrite(DISK_STATE, STATE);
-  document.getElementById('save-hint').textContent = ok ? 'Чат очищен ✔' : 'Ошибка сохранения';
-  renderAll();
 }
 
 // ---------- ПАНЕЛЬ БОССА ----------
